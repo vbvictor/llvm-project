@@ -53,6 +53,7 @@
 #include "NotNullTerminatedResultCheck.h"
 #include "OptionalValueConversionCheck.h"
 #include "ParentVirtualCallCheck.h"
+#include "PassLogParamsCheck.h"
 #include "PointerArithmeticOnPolymorphicObjectCheck.h"
 #include "PosixReturnCheck.h"
 #include "RedundantBranchConditionCheck.h"
@@ -144,6 +145,8 @@ public:
         "bugprone-inaccurate-erase");
     CheckFactories.registerCheck<IncorrectEnableIfCheck>(
         "bugprone-incorrect-enable-if");
+    CheckFactories.registerCheck<PassLogParamsCheck>(
+        "bugprone-pass-log-params");
     CheckFactories.registerCheck<ReturnConstRefFromParameterCheck>(
         "bugprone-return-const-ref-from-parameter");
     CheckFactories.registerCheck<SwitchMissingDefaultCaseCheck>(
