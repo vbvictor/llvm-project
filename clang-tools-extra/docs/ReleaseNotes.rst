@@ -125,6 +125,12 @@ New checks
 
   Finds nondeterministic usages of pointers in unordered containers.
 
+- New :doc:`bugprone-pass-log-params
+  <clang-tidy/checks/bugprone/pass-log-params>` check.
+
+  Check that assert that needed parameters are bassed to format-string in
+  log::info.
+
 - New :doc:`bugprone-tagged-union-member-count
   <clang-tidy/checks/bugprone/tagged-union-member-count>` check.
 
