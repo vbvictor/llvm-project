@@ -100,8 +100,11 @@ void PassLogParamsCheck::check(const MatchFinder::MatchResult &Result) {
         continue;
       }
 
-      // Find format specifier
-      size_t SpecPos = Pos + 1;
+      // Find format specifier start
+      size_t SpecStart = Pos + 1;
+      size_t SpecPos = SpecStart;
+
+      // Skip width/precision numbers and flags
       while (SpecPos < Str.size() &&
              (isdigit(Str[SpecPos]) || Str[SpecPos] == '.' ||
               Str[SpecPos] == '+' || Str[SpecPos] == '-' ||
@@ -109,18 +112,33 @@ void PassLogParamsCheck::check(const MatchFinder::MatchResult &Result) {
         SpecPos++;
       }
 
+      // Find length modifier and format specifier
+      size_t LengthStart = SpecPos;
+      while (SpecPos < Str.size() &&
+             (Str[SpecPos] == 'h' || Str[SpecPos] == 'l' ||
+              Str[SpecPos] == 'j' || Str[SpecPos] == 'z' ||
+              Str[SpecPos] == 't' || Str[SpecPos] == 'L')) {
+        SpecPos++;
+      }
+
       if (SpecPos < Str.size()) {
-        char FormatSpec = Str[SpecPos];
+        // Get the complete format specifier including length modifier
+        StringRef CompleteSpec =
+            Str.substr(LengthStart, SpecPos - LengthStart + 1);
+
         if (ArgIndex < Call->getNumArgs()) {
           const Expr *Arg = Call->getArg(ArgIndex)->IgnoreImplicitAsWritten();
-          if (!checkArgumentType(Arg, FormatSpec)) {
+          if (!checkArgumentType(Arg, CompleteSpec, Result.Context)) {
             diag(Arg->getBeginLoc(),
                  "argument type <%0> does not match format specifier '%%%1'")
-                << Arg->getType().getAsString() << std::string(1, FormatSpec);
+                << Arg->getType().getAsString() << CompleteSpec;
           }
         }
         ArgIndex++;
       }
+
+      // Update position to end of format specifier
+      Pos = SpecPos;
     }
   }
 
@@ -146,7 +164,6 @@ void PassLogParamsCheck::check(const MatchFinder::MatchResult &Result) {
     }
   }
 }
-
 void PassLogParamsCheck::findArgCStrRemoval(const Expr *Arg,
                                             ASTContext *Context) {
   if (!StringCStrCallExprMatcher) {
@@ -175,30 +192,75 @@ void PassLogParamsCheck::findArgCStrRemoval(const Expr *Arg,
 }
 
 bool PassLogParamsCheck::checkArgumentType(const Expr *Arg,
-                                           char FormatSpecifier) {
+                                           StringRef FormatSpecifier,
+                                           ASTContext *Context) {
   QualType ArgType = Arg->getType();
-  switch (FormatSpecifier) {
+
+  // Extract length modifier and format specifier
+  StringRef LengthMod;
+  char BaseSpec = FormatSpecifier.back();
+  if (FormatSpecifier.size() > 1) {
+    LengthMod = FormatSpecifier.drop_back();
+  }
+
+  switch (BaseSpec) {
+  // case 'x':
+  // case 'o':
+  case 'u':
   case 'd':
-  case 'i':
-    return ArgType->isIntegerType() || ArgType->isEnumeralType();
+  case 'i': {
+    if (!ArgType->isIntegerType() && !ArgType->isEnumeralType())
+      return false;
+
+    if (BaseSpec == 'u' && !ArgType->isUnsignedIntegerType())
+      return false;
+    if (BaseSpec != 'u' && ArgType->isUnsignedIntegerType()) {
+      return false;
+    }
+
+    uint64_t Width = Context->getTypeSize(ArgType);
+
+    // Check exact width based on length modifier
+    if (LengthMod == "hh")
+      return Width == 8; // char
+    if (LengthMod == "h")
+      return Width == 16; // short
+    if (LengthMod == "l")
+      return Width == 32; // long
+    if (LengthMod == "ll" || LengthMod == "z")
+      return Width == 64; // long long
+    return Width == 32;   // default int
+  }
 
   case 'f':
   case 'F':
   case 'g':
   case 'G':
   case 'e':
-  case 'E':
-    return ArgType->isRealFloatingType();
+  case 'E': {
+    if (!ArgType->isRealFloatingType())
+      return false;
 
+    uint64_t Width = Context->getTypeSize(ArgType);
+
+    if (LengthMod == "l")
+      return Width == 64; // double
+    return Width == 32;   // float
+  }
+
+  case 'c': {
+    if (!ArgType->isCharType() && !ArgType->isIntegerType())
+      return false;
+    return Context->getTypeSize(ArgType) == 8; // Ensure 8-bit
+  }
+
+  // Rest of the cases remain same
   case 's':
-    // Check for char* types
     if (ArgType->isPointerType()) {
       QualType PointeeType = ArgType->getPointeeType();
       return PointeeType->isCharType();
     }
-    // Check for std::string
     if (const auto *RecordDecl = ArgType->getAsRecordDecl()) {
-      // const RecordDecl *Decl = RecordType->getDefinition();
       return RecordDecl->getQualifiedNameAsString() == "std::basic_string" ||
              RecordDecl->getQualifiedNameAsString() == "std::string";
     }
@@ -206,12 +268,9 @@ bool PassLogParamsCheck::checkArgumentType(const Expr *Arg,
 
   case 'p':
     return ArgType->isPointerType();
-
-  case 'c':
-    return ArgType->isCharType();
   }
 
-  return false;
+  return true; // Don't know what to do, skip
 }
 
 void PassLogParamsCheck::storeOptions(ClangTidyOptions::OptionMap &Opts) {

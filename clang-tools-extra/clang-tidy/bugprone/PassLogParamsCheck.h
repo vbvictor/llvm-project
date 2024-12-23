@@ -10,6 +10,7 @@
 #define LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_BUGPRONE_PASSLOGPARAMSCHECK_H
 
 #include "../ClangTidyCheck.h"
+#include "clang/AST/ASTContext.h"
 #include "clang/AST/Expr.h"
 
 namespace clang::tidy::bugprone {
@@ -42,7 +43,8 @@ private:
   std::vector<clang::ast_matchers::BoundNodes> ArgCStrRemovals;
 
   void findArgCStrRemoval(const Expr *Arg, ASTContext *Context);
-  bool checkArgumentType(const Expr *Arg, char FormatSpecifier);
+  bool checkArgumentType(const Expr *Arg, StringRef FormatSpecifier,
+                         ASTContext *Context);
 };
 
 } // namespace clang::tidy::bugprone
