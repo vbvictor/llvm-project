@@ -91,6 +91,12 @@ Improvements to clang-tidy
 New checks
 ^^^^^^^^^^
 
+- New :doc:`use-scoped-lock
+  <clang-tidy/checks/modernize/use-scoped-lock>` check.
+
+  Finds uses of ``std::lock_guard`` and suggests replacing them with C++17's
+  more flexible and safer alternative ``std::scoped_lock``.
+
 New check aliases
 ^^^^^^^^^^^^^^^^^
 
