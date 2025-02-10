@@ -73,8 +73,44 @@ void Positive() {
     std::lock_guard<std::mutex> l4(m, std::adopt_lock);
     // CHECK-MESSAGES: :[[@LINE-1]]:5: warning: use 'std::scoped_lock' instead of 'std::lock_guard'
     // CHECK-FIXES: std::scoped_lock l4(std::adopt_lock, m);
+  } 
+}
+
+
+std::mutex p_m1;
+void PositiveShortFunction() {
+  std::lock_guard<std::mutex> l(p_m1);
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: use 'std::scoped_lock' instead of 'std::lock_guard'
+  // CHECK-FIXES: std::scoped_lock l(p_m1);
+}
+
+
+void PositiveNested() {
+  std::mutex m1;
+  if (true) {
+    std::lock_guard<std::mutex> l(m1);
+    // CHECK-MESSAGES: :[[@LINE-1]]:5: warning: use 'std::scoped_lock' instead of 'std::lock_guard'
+    // CHECK-FIXES: std::scoped_lock l(m1);
+    {
+      std::lock_guard<std::mutex> l2(m1);
+      // CHECK-MESSAGES: :[[@LINE-1]]:7: warning: use 'std::scoped_lock' instead of 'std::lock_guard'
+      // CHECK-FIXES: std::scoped_lock l2(m1);
+      {
+        std::lock_guard<std::mutex> l3(m1);
+        std::lock_guard<std::mutex> l4(m1);
+        // CHECK-MESSAGES: :[[@LINE-2]]:9: warning: use single 'std::scoped_lock' instead of multiple 'std::lock_guard'
+        // CHECK-MESSAGES: :[[@LINE-2]]:37: note: additional 'std::lock_guard' declared here
+      }
+      {
+        std::lock_guard<std::mutex> l2(m1);
+        // CHECK-MESSAGES: :[[@LINE-1]]:9: warning: use 'std::scoped_lock' instead of 'std::lock_guard'
+        // CHECK-FIXES: std::scoped_lock l2(m1);
+      }
+    }
   }
-  
+  std::lock_guard<std::mutex> l(m1);
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: use 'std::scoped_lock' instead of 'std::lock_guard'
+  // CHECK-FIXES: std::scoped_lock l(m1);
 }
 
 
@@ -88,6 +124,7 @@ void PositiveInsideArg(std::mutex &m1, std::mutex &m2, std::mutex &m3) {
   // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: use 'std::scoped_lock' instead of 'std::lock_guard'
   // CHECK-FIXES: std::scoped_lock l3(m3);
 }
+
 
 void PositiveInsideConditional() {
   std::mutex m1;
@@ -113,6 +150,7 @@ void PositiveInsideConditional() {
     // CHECK-FIXES: std::scoped_lock l1(m1);
   }
 }
+
 
 template <typename T>
 void PositiveTemplated() {
@@ -143,6 +181,7 @@ void PositiveTemplated() {
   }
 }
 
+
 template <typename Mutex>
 void PositiveTemplatedMutex() {
   Mutex m1, m2, m3;
@@ -170,6 +209,7 @@ void PositiveTemplatedMutex() {
   }
 }
 
+
 template <template <typename> typename Lock>
 void NegativeTemplate() {
   std::mutex m1, m2;
@@ -186,6 +226,7 @@ void NegativeTemplate() {
 void instantiate() {
   NegativeTemplate<std::lock_guard>();
 }
+
 
 struct PositiveClass {
   void Positive() {
@@ -219,6 +260,7 @@ struct PositiveClass {
   std::mutex m2;
   std::mutex m3;
 };
+
 
 template <typename T>
 struct PositiveTemplatedClass {
@@ -267,6 +309,7 @@ struct PositiveTemplatedClass {
   std::mutex m2;
   std::mutex m3;
 };
+
 
 template <typename T>
 using Lock = std::lock_guard<T>;
