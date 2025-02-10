@@ -26,17 +26,17 @@ namespace clang::tidy::modernize {
 namespace {
 
 bool isLockGuard(const QualType &Type) {
-  if (const auto *RecordTy = Type->getAs<RecordType>()) {
-    if (const auto *RecordDecl = RecordTy->getDecl()) {
-      return RecordDecl->getQualifiedNameAsString() == "std::lock_guard";
+  if (const auto *Record = Type->getAs<RecordType>()) {
+    if (const RecordDecl *Decl = Record->getDecl()) {
+      return Decl->getQualifiedNameAsString() == "std::lock_guard";
     }
   }
 
   if (const auto *TemplateSpecType =
           Type->getAs<TemplateSpecializationType>()) {
-    if (const auto *TemplateDecl =
+    if (const TemplateDecl *Decl =
             TemplateSpecType->getTemplateName().getAsTemplateDecl()) {
-      return TemplateDecl->getQualifiedNameAsString() == "std::lock_guard";
+      return Decl->getQualifiedNameAsString() == "std::lock_guard";
     }
   }
 
@@ -46,7 +46,7 @@ bool isLockGuard(const QualType &Type) {
 std::vector<const VarDecl *> getLockGuardsFromDecl(const DeclStmt *DS) {
   std::vector<const VarDecl *> LockGuards;
 
-  for (const auto *Decl : DS->decls()) {
+  for (const Decl *Decl : DS->decls()) {
     if (const auto *VD = dyn_cast<VarDecl>(Decl)) {
       const QualType Type = VD->getType().getCanonicalType();
       if (isLockGuard(Type)) {
@@ -74,7 +74,7 @@ findLocksInCompoundStmt(const CompoundStmt *Block,
     }
   };
 
-  for (const auto *Stmt : Block->body()) {
+  for (const Stmt *Stmt : Block->body()) {
     if (const auto *DS = dyn_cast<DeclStmt>(Stmt)) {
       std::vector<const VarDecl *> LockGuards = getLockGuardsFromDecl(DS);
 
@@ -101,10 +101,10 @@ findLocksInCompoundStmt(const CompoundStmt *Block,
 // Find the exact source range of the 'lock_guard<...>' token
 std::optional<SourceRange> getLockGuardRange(const VarDecl *LockGuard,
                                              SourceManager &SM) {
-  const auto *SourceInfo = LockGuard->getTypeSourceInfo();
-  const auto TypeLoc = SourceInfo->getTypeLoc();
+  const TypeSourceInfo *SourceInfo = LockGuard->getTypeSourceInfo();
+  const TypeLoc Loc = SourceInfo->getTypeLoc();
 
-  const auto ElaboratedLoc = TypeLoc.getAs<ElaboratedTypeLoc>();
+  const auto ElaboratedLoc = Loc.getAs<ElaboratedTypeLoc>();
   if (!ElaboratedLoc)
     return std::nullopt;
 
@@ -187,7 +187,7 @@ void UseScopedLockCheck::emitDiag(const VarDecl *LockGuard,
                                          "scoped_lock");
     return;
   case 2:
-    const auto *CtorArgs = CtorCall->getArgs();
+    const Expr *const *CtorArgs = CtorCall->getArgs();
 
     const Expr *MutexArg = CtorArgs[0];
     const Expr *AdoptLockArg = CtorArgs[1];
@@ -202,8 +202,7 @@ void UseScopedLockCheck::emitDiag(const VarDecl *LockGuard,
     Diag << FixItHint::CreateReplacement(LockGuardTypeRange.value(),
                                          "scoped_lock")
          << FixItHint::CreateReplacement(
-                SourceRange(CtorArgs[0]->getBeginLoc(),
-                            CtorArgs[1]->getEndLoc()),
+                SourceRange(MutexArg->getBeginLoc(), AdoptLockArg->getEndLoc()),
                 (llvm::Twine(AdoptLockSourceText) + ", " + MutexSourceText)
                     .str());
     return;
@@ -215,7 +214,7 @@ void UseScopedLockCheck::emitDiag(const VarDecl *LockGuard,
 void UseScopedLockCheck::emitDiag(
     const std::vector<std::vector<const VarDecl *>> &LockGuardGroups,
     const MatchFinder::MatchResult &Result) {
-  for (const auto &Group : LockGuardGroups) {
+  for (const std::vector<const VarDecl *> &Group : LockGuardGroups) {
     if (Group.size() == 1 && !WarnOnlyMultipleLocks) {
       emitDiag(Group[0], Result);
     } else {

@@ -1,4 +1,4 @@
-// RUN: %check_clang_tidy -std=c++17-or-later %s modernize-use-scoped-lock %t
+// RUN: %check_clang_tidy -std=c++17-or-later %s modernize-use-scoped-lock %t -- -- -fno-delayed-template-parsing
 
 namespace std {
 
