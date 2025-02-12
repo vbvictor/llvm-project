@@ -17,15 +17,13 @@
 namespace clang::tidy::modernize {
 
 /// Finds uses of ``std::lock_guard`` and suggests replacing them with C++17's
-/// more flexible and safer alternative ``std::scoped_lock``.
+/// alternative ``std::scoped_lock``.
 ///
 /// For the user-facing documentation see:
 /// http://clang.llvm.org/extra/clang-tidy/checks/modernize/use-scoped-lock.html
 class UseScopedLockCheck : public ClangTidyCheck {
 public:
-  UseScopedLockCheck(StringRef Name, ClangTidyContext *Context)
-      : ClangTidyCheck(Name, Context),
-        WarnOnlyMultipleLocks(Options.get("WarnOnlyMultipleLocks", false)) {}
+  UseScopedLockCheck(StringRef Name, ClangTidyContext *Context);
   void registerMatchers(ast_matchers::MatchFinder *Finder) override;
   void storeOptions(ClangTidyOptions::OptionMap &Opts) override;
   void check(const ast_matchers::MatchFinder::MatchResult &Result) override;
@@ -39,10 +37,16 @@ public:
 private:
   void emitDiag(const VarDecl *LockGuard,
                 const ast_matchers::MatchFinder::MatchResult &Result);
-  void emitDiag(const std::vector<std::vector<const VarDecl *>> &LockGroups,
+  void emitDiag(
+      const llvm::SmallVector<llvm::SmallVector<const VarDecl *>> &LockGroups,
+      const ast_matchers::MatchFinder::MatchResult &Result);
+  void emitDiag(const TypeSourceInfo *LockGuardSourceInfo,
+                const ast_matchers::MatchFinder::MatchResult &Result);
+  void emitDiag(const UsingDecl *UsingDecl,
                 const ast_matchers::MatchFinder::MatchResult &Result);
 
-  const bool WarnOnlyMultipleLocks;
+  const bool WarnOnlyOnMultipleLocks;
+  const bool WarnOnUsingAndTypedef;
 };
 
 } // namespace clang::tidy::modernize

@@ -313,8 +313,50 @@ struct PositiveTemplatedClass {
 
 template <typename T>
 using Lock = std::lock_guard<T>;
+// CHECK-MESSAGES: :[[@LINE-1]]:14: warning: use 'std::scoped_lock' instead of 'std::lock_guard'
+// CHECK-FIXES: using Lock = std::scoped_lock<T>;
+
 using LockM = std::lock_guard<std::mutex>;
+// CHECK-MESSAGES: :[[@LINE-1]]:15: warning: use 'std::scoped_lock' instead of 'std::lock_guard'
+// CHECK-FIXES: using LockM = std::scoped_lock<std::mutex>;
+
 typedef std::lock_guard<std::mutex> LockDef;
+// CHECK-MESSAGES: :[[@LINE-1]]:9: warning: use 'std::scoped_lock' instead of 'std::lock_guard'
+// CHECK-FIXES: typedef std::scoped_lock<std::mutex> LockDef;
+
+
+void PositiveUsingDecl() {
+  using std::lock_guard;
+  // CHECK-MESSAGES: :[[@LINE-1]]:14: warning: use 'std::scoped_lock' instead of 'std::lock_guard'
+  // CHECK-FIXES: using std::scoped_lock;
+
+  using LockMFun = std::lock_guard<std::mutex>;
+  // CHECK-MESSAGES: :[[@LINE-1]]:20: warning: use 'std::scoped_lock' instead of 'std::lock_guard'
+  // CHECK-FIXES: using LockMFun = std::scoped_lock<std::mutex>;
+
+  typedef std::lock_guard<std::mutex> LockDefFun;
+  // CHECK-MESSAGES: :[[@LINE-1]]:11: warning: use 'std::scoped_lock' instead of 'std::lock_guard'
+  // CHECK-FIXES: typedef std::scoped_lock<std::mutex> LockDefFun;
+}
+
+template <typename T>
+void PositiveUsingDeclTemplate() {
+  using std::lock_guard;
+  // CHECK-MESSAGES: :[[@LINE-1]]:14: warning: use 'std::scoped_lock' instead of 'std::lock_guard'
+  // CHECK-FIXES: using std::scoped_lock;
+
+  using LockFunT = std::lock_guard<T>;
+  // CHECK-MESSAGES: :[[@LINE-1]]:20: warning: use 'std::scoped_lock' instead of 'std::lock_guard'
+  // CHECK-FIXES: using LockFunT = std::scoped_lock<T>;
+
+  using LockMFunT = std::lock_guard<std::mutex>;
+  // CHECK-MESSAGES: :[[@LINE-1]]:21: warning: use 'std::scoped_lock' instead of 'std::lock_guard'
+  // CHECK-FIXES: using LockMFunT = std::scoped_lock<std::mutex>;
+
+  typedef std::lock_guard<std::mutex> LockDefFunT;
+  // CHECK-MESSAGES: :[[@LINE-1]]:11: warning: use 'std::scoped_lock' instead of 'std::lock_guard'
+  // CHECK-FIXES: typedef std::scoped_lock<std::mutex> LockDefFunT;
+}
 
 void NegativeUsingTypedefs() {
   std::mutex m;
@@ -329,5 +371,24 @@ void NegativeUsingTypedefs() {
 
   {
     LockDef l(m);
+  }
+}
+
+// Non-standard lock_guard.
+template <typename Mutex>
+struct lock_guard {
+  lock_guard(Mutex &m) { }
+  lock_guard(const lock_guard& ) = delete;
+};
+
+void NegativeNonStdLockGuard() {
+  std::mutex m;
+  {
+    lock_guard<std::mutex> l(m);
+  }
+
+  {
+    lock_guard<std::mutex> l1(m);
+    lock_guard<std::mutex> l2(m);
   }
 }
