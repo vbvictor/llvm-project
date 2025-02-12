@@ -4,9 +4,7 @@ modernize-use-scoped-lock
 =========================
 
 Finds uses of ``std::lock_guard`` and suggests replacing them with C++17's
-alternative ``std::scoped_lock``. ``std::scoped_lock`` is a superior version
-of ``std::lock_guard`` that can lock multiple mutexes at once with
-deadlock-avoidance algorithm. The check will automatically transform only
+alternative ``std::scoped_lock``. The check will automatically transform only
 single declarations of ``std::lock_guard`` and emit warnings for multiple
 declarations of ``std::lock_guard`` that can be replaced with a single
 declaration of ``std::scoped_lock``.
