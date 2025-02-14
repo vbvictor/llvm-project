@@ -95,7 +95,7 @@ findLocksInCompoundStmt(const CompoundStmt *Block,
 }
 
 TemplateSpecializationTypeLoc
-getTemplateSpecializationTypeLoc(const TypeSourceInfo *SourceInfo) {
+getTemplateLockGuardTypeLoc(const TypeSourceInfo *SourceInfo) {
   const TypeLoc Loc = SourceInfo->getTypeLoc();
 
   const auto ElaboratedLoc = Loc.getAs<ElaboratedTypeLoc>();
@@ -108,7 +108,7 @@ getTemplateSpecializationTypeLoc(const TypeSourceInfo *SourceInfo) {
 // Find the exact source range of the 'lock_guard<...>' token
 SourceRange getLockGuardTemplateRange(const TypeSourceInfo *SourceInfo) {
   const TemplateSpecializationTypeLoc TemplateLoc =
-      getTemplateSpecializationTypeLoc(SourceInfo);
+      getTemplateLockGuardTypeLoc(SourceInfo);
   if (!TemplateLoc)
     return {};
 
@@ -116,9 +116,10 @@ SourceRange getLockGuardTemplateRange(const TypeSourceInfo *SourceInfo) {
                      TemplateLoc.getRAngleLoc());
 }
 
+// Find the exact source range of the 'lock_guard' token
 SourceRange getLockGuardRange(const TypeSourceInfo *SourceInfo) {
   const TemplateSpecializationTypeLoc TemplateLoc =
-      getTemplateSpecializationTypeLoc(SourceInfo);
+      getTemplateLockGuardTypeLoc(SourceInfo);
   if (!TemplateLoc)
     return {};
 
@@ -144,7 +145,7 @@ void UseScopedLockCheck::storeOptions(ClangTidyOptions::OptionMap &Opts) {
 void UseScopedLockCheck::registerMatchers(MatchFinder *Finder) {
   auto LockGuardClassDecl =
       namedDecl(anyOf(classTemplateDecl(), classTemplateSpecializationDecl()),
-                hasName("::std::lock_guard"));
+                hasName("lock_guard"), isInStdNamespace());
   auto LockGuardType = qualType(hasDeclaration(LockGuardClassDecl));
   auto LockVarDecl = varDecl(hasType(LockGuardType));
 
@@ -188,8 +189,7 @@ void UseScopedLockCheck::registerMatchers(MatchFinder *Finder) {
     // Match 'using std::lock_guard'
     Finder->addMatcher(
         usingDecl(unless(isExpansionInSystemHeader()),
-                  hasAnyUsingShadowDecl(hasTargetDecl(
-                      namedDecl(hasName("lock_guard"), isInStdNamespace()))))
+                  hasAnyUsingShadowDecl(hasTargetDecl(LockGuardClassDecl)))
             .bind("lock-guard-using-decl"),
         this);
   }
