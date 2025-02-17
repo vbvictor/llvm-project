@@ -1,7 +1,7 @@
-.. title:: clang-tidy - bugprone-smartptr-reset-ambiguous-call
+.. title:: clang-tidy - readability-ambiguous-smartptr-reset-call
 
-bugprone-smartptr-reset-ambiguous-call
-======================================
+readability-ambiguous-smartptr-reset-call
+=========================================
 
 Finds potentially erroneous calls to ``reset`` method on smart pointers when
 the pointee type also has a ``reset`` method. Having a ``reset`` method in
@@ -35,13 +35,14 @@ access or direct assignment:
   ptr = nullptr;   // Clearly makes the pointer null
 
 The default smart pointers that are considered are ``std::unique_ptr``,
-``std::shared_ptr``. To specify other smart pointers or other classes use the
-:option:`SmartPointers` option.
+``std::shared_ptr``, ``boost::unique_ptr``, ``boost::shared_ptr``. To specify
+other smart pointers or other classes use the :option:`SmartPointers` option.
 
 Options
 -------
 
 .. option:: SmartPointers
 
-    Semicolon-separated list of class names of custom smart pointers.
-    Default value is `::std::unique_ptr;::std::shared_ptr`.
+    Semicolon-separated list of fully qualified class names of custom smart
+    pointers. Default value is `::std::unique_ptr;::std::shared_ptr;
+    ::boost::unique_ptr;::boost::shared_ptr`.

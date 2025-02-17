@@ -1,4 +1,4 @@
-//===--- SmartptrResetAmbiguousCallCheck.cpp - clang-tidy -----------------===//
+//===--- AmbiguousSmartptrResetCallCheck.cpp - clang-tidy -----------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -6,7 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "SmartptrResetAmbiguousCallCheck.h"
+#include "AmbiguousSmartptrResetCallCheck.h"
 #include "../utils/OptionsUtils.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/ASTMatchers/ASTMatchFinder.h"
@@ -15,7 +15,7 @@
 
 using namespace clang::ast_matchers;
 
-namespace clang::tidy::bugprone {
+namespace clang::tidy::readability {
 
 namespace {
 
@@ -41,19 +41,19 @@ AST_MATCHER(CXXMethodDecl, hasOnlyDefaultParameters) {
 const auto DefaultSmartPointers = "::std::shared_ptr;::std::unique_ptr";
 } // namespace
 
-SmartptrResetAmbiguousCallCheck::SmartptrResetAmbiguousCallCheck(
+AmbiguousSmartptrResetCallCheck::AmbiguousSmartptrResetCallCheck(
     StringRef Name, ClangTidyContext *Context)
     : ClangTidyCheck(Name, Context),
       SmartPointers(utils::options::parseStringList(
           Options.get("SmartPointers", DefaultSmartPointers))) {}
 
-void SmartptrResetAmbiguousCallCheck::storeOptions(
+void AmbiguousSmartptrResetCallCheck::storeOptions(
     ClangTidyOptions::OptionMap &Opts) {
   Options.store(Opts, "SmartPointers",
                 utils::options::serializeStringList(SmartPointers));
 }
 
-void SmartptrResetAmbiguousCallCheck::registerMatchers(MatchFinder *Finder) {
+void AmbiguousSmartptrResetCallCheck::registerMatchers(MatchFinder *Finder) {
   const auto IsSmartptr = hasAnyName(SmartPointers);
 
   const auto ResetMethod =
@@ -95,7 +95,7 @@ void SmartptrResetAmbiguousCallCheck::registerMatchers(MatchFinder *Finder) {
       this);
 }
 
-void SmartptrResetAmbiguousCallCheck::check(
+void AmbiguousSmartptrResetCallCheck::check(
     const MatchFinder::MatchResult &Result) {
 
   if (const auto *SmartptrResetCall =
@@ -103,10 +103,11 @@ void SmartptrResetAmbiguousCallCheck::check(
     const auto *Member = cast<MemberExpr>(SmartptrResetCall->getCallee());
 
     diag(SmartptrResetCall->getBeginLoc(),
-         "be explicit when calling 'reset()' on a smart pointer with a "
-         "pointee that has a 'reset()' method");
+         "ambiguous call to 'reset()' on a smart pointer with pointee that "
+         "also has a 'reset()' method, prefer more explicit approach");
 
-    diag(SmartptrResetCall->getBeginLoc(), "assign the pointer to 'nullptr'",
+    diag(SmartptrResetCall->getBeginLoc(),
+         "consider assigning the pointer to 'nullptr' here",
          DiagnosticIDs::Note)
         << FixItHint::CreateReplacement(
                SourceRange(Member->getOperatorLoc(),
@@ -128,10 +129,12 @@ void SmartptrResetAmbiguousCallCheck::check(
                               *Result.SourceManager, getLangOpts());
 
     diag(ObjectResetCall->getBeginLoc(),
-         "be explicit when calling 'reset()' on a pointee of a smart pointer");
+         "ambiguous call to 'reset()' on a pointee of a smart pointer, prefer "
+         "more explicit approach");
 
     diag(ObjectResetCall->getBeginLoc(),
-         "use dereference to call 'reset' method of the pointee",
+         "consider dereferencing smart pointer to call 'reset' method "
+         "of the pointee here",
          DiagnosticIDs::Note)
         << FixItHint::CreateInsertion(SmartptrSourceRange.getBegin(), "(*")
         << FixItHint::CreateInsertion(SmartptrSourceRange.getEnd(), ")")
@@ -143,4 +146,4 @@ void SmartptrResetAmbiguousCallCheck::check(
   }
 }
 
-} // namespace clang::tidy::bugprone
+} // namespace clang::tidy::readability

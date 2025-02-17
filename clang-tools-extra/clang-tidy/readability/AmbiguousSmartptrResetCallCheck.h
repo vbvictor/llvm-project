@@ -1,4 +1,4 @@
-//===--- SmartptrResetAmbiguousCallCheck.h - clang-tidy ---------*- C++ -*-===//
+//===--- AmbiguousSmartptrResetCallCheck.h - clang-tidy ---------*- C++ -*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -6,21 +6,21 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_BUGPRONE_SMARTPTRRESETAMBIGUOUSCALLCHECK_H
-#define LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_BUGPRONE_SMARTPTRRESETAMBIGUOUSCALLCHECK_H
+#ifndef LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_READABILITY_AMBIGUOUSSMARTPTRRESETCALLCHECK_H
+#define LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_READABILITY_AMBIGUOUSSMARTPTRRESETCALLCHECK_H
 
 #include "../ClangTidyCheck.h"
 
-namespace clang::tidy::bugprone {
+namespace clang::tidy::readability {
 
 /// Finds potentially erroneous calls to 'reset' method on smart pointers when
 /// the pointee type also has a 'reset' method
 ///
 /// For the user-facing documentation see:
-/// http://clang.llvm.org/extra/clang-tidy/checks/bugprone/smartptr-reset-ambiguous-call.html
-class SmartptrResetAmbiguousCallCheck : public ClangTidyCheck {
+/// http://clang.llvm.org/extra/clang-tidy/checks/readability/ambiguous-smartptr-reset-call.html
+class AmbiguousSmartptrResetCallCheck : public ClangTidyCheck {
 public:
-  SmartptrResetAmbiguousCallCheck(StringRef Name, ClangTidyContext *Context);
+  AmbiguousSmartptrResetCallCheck(StringRef Name, ClangTidyContext *Context);
   void registerMatchers(ast_matchers::MatchFinder *Finder) override;
   void check(const ast_matchers::MatchFinder::MatchResult &Result) override;
   void storeOptions(ClangTidyOptions::OptionMap &Opts) override;
@@ -32,6 +32,6 @@ private:
   const std::vector<StringRef> SmartPointers;
 };
 
-} // namespace clang::tidy::bugprone
+} // namespace clang::tidy::readability
 
-#endif // LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_BUGPRONE_SMARTPTRRESETAMBIGUOUSCALLCHECK_H
+#endif // LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_READABILITY_AMBIGUOUSSMARTPTRRESETCALLCHECK_H
