@@ -237,3 +237,177 @@ struct S {
   std::unique_ptr<std::shared_ptr<int>> s_ptr;
   std::unique_ptr<NonResettable> ptr;
 };
+
+
+typedef std::unique_ptr<Resettable> TypedefResettableUniquePtr;
+typedef std::shared_ptr<Resettable> TypedefResettableSharedPtr;
+
+void TypedefPositive() {
+  TypedefResettableUniquePtr u_ptr;
+  u_ptr.reset();
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: ambiguous call to 'reset()' on a smart pointer with pointee that also has a 'reset()' method, prefer more explicit approach
+  // CHECK-MESSAGES: :[[@LINE-2]]:3: note: consider assigning the pointer to 'nullptr' here
+  // CHECK-FIXES: u_ptr = nullptr;
+  u_ptr->reset();
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: ambiguous call to 'reset()' on a pointee of a smart pointer, prefer more explicit approach
+  // CHECK-MESSAGES: :[[@LINE-2]]:3: note: consider dereferencing smart pointer to call 'reset' method of the pointee here
+  // CHECK-FIXES: (*u_ptr).reset();
+
+  TypedefResettableSharedPtr s_ptr;
+  s_ptr.reset();
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: ambiguous call to 'reset()' on a smart pointer with pointee that also has a 'reset()' method, prefer more explicit approach
+  // CHECK-MESSAGES: :[[@LINE-2]]:3: note: consider assigning the pointer to 'nullptr' here
+  // CHECK-FIXES: s_ptr = nullptr;
+
+  s_ptr->reset();
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: ambiguous call to 'reset()' on a pointee of a smart pointer, prefer more explicit approach
+  // CHECK-MESSAGES: :[[@LINE-2]]:3: note: consider dereferencing smart pointer to call 'reset' method of the pointee here
+  // CHECK-FIXES: (*s_ptr).reset();
+}
+
+using UsingResettableUniquePtr = std::unique_ptr<Resettable>;
+using UsingResettableSharedPtr = std::shared_ptr<Resettable>;
+
+void UsingPositive() {
+  UsingResettableUniquePtr u_ptr;
+  u_ptr.reset();
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: ambiguous call to 'reset()' on a smart pointer with pointee that also has a 'reset()' method, prefer more explicit approach
+  // CHECK-MESSAGES: :[[@LINE-2]]:3: note: consider assigning the pointer to 'nullptr' here
+  // CHECK-FIXES: u_ptr = nullptr;
+  u_ptr->reset();
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: ambiguous call to 'reset()' on a pointee of a smart pointer, prefer more explicit approach
+  // CHECK-MESSAGES: :[[@LINE-2]]:3: note: consider dereferencing smart pointer to call 'reset' method of the pointee here
+  // CHECK-FIXES: (*u_ptr).reset();
+
+  UsingResettableSharedPtr s_ptr;
+  s_ptr.reset();
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: ambiguous call to 'reset()' on a smart pointer with pointee that also has a 'reset()' method, prefer more explicit approach
+  // CHECK-MESSAGES: :[[@LINE-2]]:3: note: consider assigning the pointer to 'nullptr' here
+  // CHECK-FIXES: s_ptr = nullptr;
+
+  s_ptr->reset();
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: ambiguous call to 'reset()' on a pointee of a smart pointer, prefer more explicit approach
+  // CHECK-MESSAGES: :[[@LINE-2]]:3: note: consider dereferencing smart pointer to call 'reset' method of the pointee here
+  // CHECK-FIXES: (*s_ptr).reset();
+}
+
+template<typename T>
+using UsingUniquePtr = std::unique_ptr<T>;
+template<typename T>
+using UsingSharedPtr = std::shared_ptr<T>;
+
+void UsingTemplatePositive() {
+  UsingUniquePtr<Resettable> u_ptr;
+  u_ptr.reset();
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: ambiguous call to 'reset()' on a smart pointer with pointee that also has a 'reset()' method, prefer more explicit approach
+  // CHECK-MESSAGES: :[[@LINE-2]]:3: note: consider assigning the pointer to 'nullptr' here
+  // CHECK-FIXES: u_ptr = nullptr;
+  u_ptr->reset();
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: ambiguous call to 'reset()' on a pointee of a smart pointer, prefer more explicit approach
+  // CHECK-MESSAGES: :[[@LINE-2]]:3: note: consider dereferencing smart pointer to call 'reset' method of the pointee here
+  // CHECK-FIXES: (*u_ptr).reset();
+
+  UsingSharedPtr<Resettable> s_ptr;
+  s_ptr.reset();
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: ambiguous call to 'reset()' on a smart pointer with pointee that also has a 'reset()' method, prefer more explicit approach
+  // CHECK-MESSAGES: :[[@LINE-2]]:3: note: consider assigning the pointer to 'nullptr' here
+  // CHECK-FIXES: s_ptr = nullptr;
+
+  s_ptr->reset();
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: ambiguous call to 'reset()' on a pointee of a smart pointer, prefer more explicit approach
+  // CHECK-MESSAGES: :[[@LINE-2]]:3: note: consider dereferencing smart pointer to call 'reset' method of the pointee here
+  // CHECK-FIXES: (*s_ptr).reset();
+}
+
+template<typename T>
+void UsingByTemplatePositive() {
+  UsingUniquePtr<T> u_ptr;
+  u_ptr.reset();
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: ambiguous call to 'reset()' on a smart pointer with pointee that also has a 'reset()' method, prefer more explicit approach
+  // CHECK-MESSAGES: :[[@LINE-2]]:3: note: consider assigning the pointer to 'nullptr' here
+  // CHECK-FIXES: u_ptr = nullptr;
+  u_ptr->reset();
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: ambiguous call to 'reset()' on a pointee of a smart pointer, prefer more explicit approach
+  // CHECK-MESSAGES: :[[@LINE-2]]:3: note: consider dereferencing smart pointer to call 'reset' method of the pointee here
+  // CHECK-FIXES: (*u_ptr).reset();
+
+  UsingSharedPtr<T> s_ptr;
+  s_ptr.reset();
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: ambiguous call to 'reset()' on a smart pointer with pointee that also has a 'reset()' method, prefer more explicit approach
+  // CHECK-MESSAGES: :[[@LINE-2]]:3: note: consider assigning the pointer to 'nullptr' here
+  // CHECK-FIXES: s_ptr = nullptr;
+
+  s_ptr->reset();
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: ambiguous call to 'reset()' on a pointee of a smart pointer, prefer more explicit approach
+  // CHECK-MESSAGES: :[[@LINE-2]]:3: note: consider dereferencing smart pointer to call 'reset' method of the pointee here
+  // CHECK-FIXES: (*s_ptr).reset();
+}
+
+void instantiate2() {
+  UsingByTemplatePositive<Resettable>();
+}
+
+
+// Check other default pointers and classes.
+namespace std {
+
+template <typename T>
+struct optional {
+  T& operator*() const;
+  T* operator->() const;
+  void reset();
+};
+
+} // namespace std
+
+namespace boost {
+
+template <typename T>
+struct scoped_ptr {
+  T& operator*() const;
+  T* operator->() const;
+  void reset(T* p = 0);
+};
+
+template <typename T>
+struct shared_ptr {
+  T& operator*() const;
+  T* operator->() const;
+  void reset();
+  void reset(T*);
+};
+
+} // namespace boost
+
+void PositiveOtherClasses() {
+  boost::scoped_ptr<Resettable> sc;
+  sc.reset();
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: ambiguous call to 'reset()' on a smart pointer with pointee that also has a 'reset()' method, prefer more explicit approach
+  // CHECK-MESSAGES: :[[@LINE-2]]:3: note: consider assigning the pointer to 'nullptr' here
+  // CHECK-FIXES: sc = nullptr;
+  sc->reset();
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: ambiguous call to 'reset()' on a pointee of a smart pointer, prefer more explicit approach
+  // CHECK-MESSAGES: :[[@LINE-2]]:3: note: consider dereferencing smart pointer to call 'reset' method of the pointee here
+  // CHECK-FIXES: (*sc).reset();
+
+  boost::shared_ptr<Resettable> sh;
+  sh.reset();
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: ambiguous call to 'reset()' on a smart pointer with pointee that also has a 'reset()' method, prefer more explicit approach
+  // CHECK-MESSAGES: :[[@LINE-2]]:3: note: consider assigning the pointer to 'nullptr' here
+  // CHECK-FIXES: sh = nullptr;
+  sh->reset();
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: ambiguous call to 'reset()' on a pointee of a smart pointer, prefer more explicit approach
+  // CHECK-MESSAGES: :[[@LINE-2]]:3: note: consider dereferencing smart pointer to call 'reset' method of the pointee here
+  // CHECK-FIXES: (*sh).reset();
+
+  std::optional<Resettable> o;
+  o.reset();
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: ambiguous call to 'reset()' on a smart pointer with pointee that also has a 'reset()' method, prefer more explicit approach
+  // CHECK-MESSAGES: :[[@LINE-2]]:3: note: consider assigning the pointer to 'nullptr' here
+  // CHECK-FIXES: o = nullptr;
+  o->reset();
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: ambiguous call to 'reset()' on a pointee of a smart pointer, prefer more explicit approach
+  // CHECK-MESSAGES: :[[@LINE-2]]:3: note: consider dereferencing smart pointer to call 'reset' method of the pointee here
+  // CHECK-FIXES: (*o).reset();
+}
+

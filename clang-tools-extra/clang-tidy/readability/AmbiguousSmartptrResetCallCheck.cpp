@@ -38,7 +38,9 @@ AST_MATCHER(CXXMethodDecl, hasOnlyDefaultParameters) {
   return true;
 }
 
-const auto DefaultSmartPointers = "::std::shared_ptr;::std::unique_ptr";
+const auto DefaultSmartPointers =
+    "::std::shared_ptr;::std::unique_ptr;::std::optional;"
+    "::boost::shared_ptr;::boost::scoped_ptr";
 } // namespace
 
 AmbiguousSmartptrResetCallCheck::AmbiguousSmartptrResetCallCheck(
@@ -64,17 +66,18 @@ void AmbiguousSmartptrResetCallCheck::registerMatchers(MatchFinder *Finder) {
             classTemplateSpecializationDecl(
                 hasSpecializedTemplate(classTemplateDecl(has(ResetMethod)))));
 
-  const auto SmartptrWithBugproneReset = classTemplateSpecializationDecl(
-      IsSmartptr,
-      hasTemplateArgument(
-          0, templateArgument(refersToType(hasUnqualifiedDesugaredType(
-                 recordType(hasDeclaration(TypeWithReset)))))));
+  const auto SmartptrWithReset = hasType(hasUnqualifiedDesugaredType(
+      recordType(hasDeclaration(classTemplateSpecializationDecl(
+          IsSmartptr,
+          hasTemplateArgument(
+              0, templateArgument(refersToType(hasUnqualifiedDesugaredType(
+                     recordType(hasDeclaration(TypeWithReset)))))))))));
 
   // Find a.reset() calls
   Finder->addMatcher(
-      cxxMemberCallExpr(callee(memberExpr(member(hasName("reset")))),
+      cxxMemberCallExpr(callee(memberExpr(member(ResetMethod))),
                         everyArgumentMatches(cxxDefaultArgExpr()),
-                        on(expr(hasType(SmartptrWithBugproneReset))))
+                        on(expr(SmartptrWithReset)))
           .bind("smartptrResetCall"),
       this);
 
@@ -84,11 +87,8 @@ void AmbiguousSmartptrResetCallCheck::registerMatchers(MatchFinder *Finder) {
           callee(memberExpr(
               member(ResetMethod),
               hasObjectExpression(
-                  cxxOperatorCallExpr(
-                      hasOverloadedOperatorName("->"),
-                      hasArgument(
-                          0, expr(hasType(
-                                 classTemplateSpecializationDecl(IsSmartptr)))))
+                  cxxOperatorCallExpr(hasOverloadedOperatorName("->"),
+                                      hasArgument(0, expr(SmartptrWithReset)))
                       .bind("OpCall")))),
           everyArgumentMatches(cxxDefaultArgExpr()))
           .bind("objectResetCall"),

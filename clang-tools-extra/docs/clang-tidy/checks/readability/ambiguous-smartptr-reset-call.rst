@@ -34,9 +34,10 @@ access or direct assignment:
   (*ptr).reset();  // Clearly calls underlying reset method
   ptr = nullptr;   // Clearly makes the pointer null
 
-The default smart pointers that are considered are ``std::unique_ptr``,
-``std::shared_ptr``, ``boost::unique_ptr``, ``boost::shared_ptr``. To specify
-other smart pointers or other classes use the :option:`SmartPointers` option.
+The default smart pointers and classes that are considered are
+``std::unique_ptr``, ``std::shared_ptr``, ``std::optional``,
+``boost::shared_ptr``, ``boost::scoped_ptr``. To specify other smart pointers
+or other classes use the :option:`SmartPointers` option.
 
 Options
 -------
@@ -45,4 +46,4 @@ Options
 
     Semicolon-separated list of fully qualified class names of custom smart
     pointers. Default value is `::std::unique_ptr;::std::shared_ptr;
-    ::boost::unique_ptr;::boost::shared_ptr`.
+    ::std::optional;::boost::unique_ptr;::boost::shared_ptr`.
