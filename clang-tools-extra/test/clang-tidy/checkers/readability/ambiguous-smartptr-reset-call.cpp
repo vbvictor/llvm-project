@@ -19,6 +19,13 @@ struct shared_ptr {
 
 } // namespace std
 
+template <typename T>
+struct non_default_reset_ptr {
+  T& operator*() const;
+  T* operator->() const;
+  void reset(T* p);
+};
+
 struct Resettable {
   void reset();
   void doSomething();
@@ -153,6 +160,10 @@ void Negative() {
   u_ptr_default_params.reset(nullptr);
   u_ptr_default_params->reset(1);
   u_ptr_default_params->reset(1, 2.0);
+
+  non_default_reset_ptr<Resettable> non_default_reset_ptr;
+  non_default_reset_ptr.reset(new Resettable);
+  non_default_reset_ptr->reset();
 }
 
 template <typename T>
@@ -347,6 +358,33 @@ void instantiate2() {
   UsingByTemplatePositive<Resettable>();
 }
 
+void NestedUsingPositive() {
+  UsingUniquePtr<UsingSharedPtr<TypedefResettableUniquePtr>> nested_ptr;
+  nested_ptr.reset();
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: ambiguous call to 'reset()' on a smart pointer with pointee that also has a 'reset()' method, prefer more explicit approach
+  // CHECK-MESSAGES: :[[@LINE-2]]:3: note: consider assigning the pointer to 'nullptr' here
+  // CHECK-FIXES: nested_ptr = nullptr;
+  nested_ptr->reset();
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: ambiguous call to 'reset()' on a pointee of a smart pointer, prefer more explicit approach
+  // CHECK-MESSAGES: :[[@LINE-2]]:3: note: consider dereferencing smart pointer to call 'reset' method of the pointee here
+  // CHECK-FIXES: (*nested_ptr).reset();
+  (*nested_ptr).reset();
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: ambiguous call to 'reset()' on a smart pointer with pointee that also has a 'reset()' method, prefer more explicit approach
+  // CHECK-MESSAGES: :[[@LINE-2]]:3: note: consider assigning the pointer to 'nullptr' here
+  // CHECK-FIXES: (*nested_ptr) = nullptr;
+  (*nested_ptr)->reset();
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: ambiguous call to 'reset()' on a pointee of a smart pointer, prefer more explicit approach
+  // CHECK-MESSAGES: :[[@LINE-2]]:3: note: consider dereferencing smart pointer to call 'reset' method of the pointee here
+  // CHECK-FIXES: (*(*nested_ptr)).reset();
+  (**nested_ptr).reset();
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: ambiguous call to 'reset()' on a smart pointer with pointee that also has a 'reset()' method, prefer more explicit approach
+  // CHECK-MESSAGES: :[[@LINE-2]]:3: note: consider assigning the pointer to 'nullptr' here
+  // CHECK-FIXES: (**nested_ptr) = nullptr;
+  (**nested_ptr)->reset();
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: ambiguous call to 'reset()' on a pointee of a smart pointer, prefer more explicit approach
+  // CHECK-MESSAGES: :[[@LINE-2]]:3: note: consider dereferencing smart pointer to call 'reset' method of the pointee here
+  // CHECK-FIXES: (*(**nested_ptr)).reset();
+}
 
 // Check other default pointers and classes.
 namespace std {

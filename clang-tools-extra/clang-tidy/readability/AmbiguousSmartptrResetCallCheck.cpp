@@ -12,22 +12,13 @@
 #include "clang/ASTMatchers/ASTMatchFinder.h"
 #include "clang/ASTMatchers/ASTMatchers.h"
 #include "clang/Lex/Lexer.h"
+#include <utility>
 
 using namespace clang::ast_matchers;
 
 namespace clang::tidy::readability {
 
 namespace {
-
-AST_MATCHER_P(CallExpr, everyArgumentMatches,
-              ast_matchers::internal::Matcher<Expr>, InnerMatcher) {
-  for (const auto *Arg : Node.arguments()) {
-    if (!InnerMatcher.matches(*Arg, Finder, Builder))
-      return false;
-  }
-
-  return true;
-}
 
 AST_MATCHER(CXXMethodDecl, hasOnlyDefaultParameters) {
   for (const auto *Param : Node.parameters()) {
@@ -66,63 +57,32 @@ void AmbiguousSmartptrResetCallCheck::registerMatchers(MatchFinder *Finder) {
             classTemplateSpecializationDecl(
                 hasSpecializedTemplate(classTemplateDecl(has(ResetMethod)))));
 
-  const auto SmartptrWithReset = hasType(hasUnqualifiedDesugaredType(
+  const auto SmartptrWithReset = expr(hasType(hasUnqualifiedDesugaredType(
       recordType(hasDeclaration(classTemplateSpecializationDecl(
           IsSmartptr,
           hasTemplateArgument(
               0, templateArgument(refersToType(hasUnqualifiedDesugaredType(
-                     recordType(hasDeclaration(TypeWithReset)))))))))));
+                     recordType(hasDeclaration(TypeWithReset))))))))))));
 
-  // Find a.reset() calls
-  Finder->addMatcher(
-      cxxMemberCallExpr(callee(memberExpr(member(ResetMethod))),
-                        everyArgumentMatches(cxxDefaultArgExpr()),
-                        on(expr(SmartptrWithReset)))
-          .bind("smartptrResetCall"),
-      this);
-
-  // Find a->reset() calls
   Finder->addMatcher(
       cxxMemberCallExpr(
-          callee(memberExpr(
-              member(ResetMethod),
-              hasObjectExpression(
-                  cxxOperatorCallExpr(hasOverloadedOperatorName("->"),
-                                      hasArgument(0, expr(SmartptrWithReset)))
-                      .bind("OpCall")))),
-          everyArgumentMatches(cxxDefaultArgExpr()))
-          .bind("objectResetCall"),
+          callee(ResetMethod),
+          unless(hasAnyArgument(expr(unless(cxxDefaultArgExpr())))),
+          anyOf(on(SmartptrWithReset),
+                on(cxxOperatorCallExpr(hasOverloadedOperatorName("->"),
+                                       hasArgument(0, SmartptrWithReset))
+                       .bind("ArrowOp"))))
+          .bind("MemberCall"),
       this);
 }
 
 void AmbiguousSmartptrResetCallCheck::check(
     const MatchFinder::MatchResult &Result) {
 
-  if (const auto *SmartptrResetCall =
-          Result.Nodes.getNodeAs<CXXMemberCallExpr>("smartptrResetCall")) {
-    const auto *Member = cast<MemberExpr>(SmartptrResetCall->getCallee());
-
-    diag(SmartptrResetCall->getBeginLoc(),
-         "ambiguous call to 'reset()' on a smart pointer with pointee that "
-         "also has a 'reset()' method, prefer more explicit approach");
-
-    diag(SmartptrResetCall->getBeginLoc(),
-         "consider assigning the pointer to 'nullptr' here",
-         DiagnosticIDs::Note)
-        << FixItHint::CreateReplacement(
-               SourceRange(Member->getOperatorLoc(),
-                           Member->getOperatorLoc().getLocWithOffset(0)),
-               " =")
-        << FixItHint::CreateReplacement(
-               SourceRange(Member->getMemberLoc(),
-                           SmartptrResetCall->getEndLoc()),
-               " nullptr");
-    return;
-  }
-
-  if (const auto *ObjectResetCall =
-          Result.Nodes.getNodeAs<CXXMemberCallExpr>("objectResetCall")) {
-    const auto *Arrow = Result.Nodes.getNodeAs<CXXOperatorCallExpr>("OpCall");
+  if (const auto *Arrow =
+          Result.Nodes.getNodeAs<CXXOperatorCallExpr>("ArrowOp")) {
+    const auto *ObjectResetCall =
+        Result.Nodes.getNodeAs<CXXMemberCallExpr>("MemberCall");
 
     const CharSourceRange SmartptrSourceRange =
         Lexer::getAsCharRange(Arrow->getArg(0)->getSourceRange(),
@@ -143,6 +103,28 @@ void AmbiguousSmartptrResetCallCheck::check(
                    Arrow->getOperatorLoc(),
                    Arrow->getOperatorLoc().getLocWithOffset(2)),
                ".");
+    return;
+  }
+
+  if (const auto *SmartptrResetCall =
+          Result.Nodes.getNodeAs<CXXMemberCallExpr>("MemberCall")) {
+    const auto *Member = cast<MemberExpr>(SmartptrResetCall->getCallee());
+
+    diag(SmartptrResetCall->getBeginLoc(),
+         "ambiguous call to 'reset()' on a smart pointer with pointee that "
+         "also has a 'reset()' method, prefer more explicit approach");
+
+    diag(SmartptrResetCall->getBeginLoc(),
+         "consider assigning the pointer to 'nullptr' here",
+         DiagnosticIDs::Note)
+        << FixItHint::CreateReplacement(
+               SourceRange(Member->getOperatorLoc(),
+                           Member->getOperatorLoc().getLocWithOffset(0)),
+               " =")
+        << FixItHint::CreateReplacement(
+               SourceRange(Member->getMemberLoc(),
+                           SmartptrResetCall->getEndLoc()),
+               " nullptr");
   }
 }
 
