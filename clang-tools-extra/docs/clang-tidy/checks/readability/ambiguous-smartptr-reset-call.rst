@@ -35,9 +35,19 @@ access or direct assignment:
   ptr = nullptr;   // Clearly makes the pointer null
 
 The default smart pointers and classes that are considered are
-``std::unique_ptr``, ``std::shared_ptr``, ``std::optional``,
-``boost::shared_ptr``, ``boost::scoped_ptr``. To specify other smart pointers
-or other classes use the :option:`SmartPointers` option.
+``std::unique_ptr``, ``std::shared_ptr``, ``boost::shared_ptr``,
+``boost::scoped_ptr``. To specify other smart pointers or other classes use
+the :option:`SmartPointers` option.
+
+
+.. note::
+    
+  The check may emit misleading warning messages and invalid fix-its when
+  specifying classes which are not smart pointers. For example,
+  ``std::optional`` can be specified in the :option:`SmartPointers` option,
+  but the check will emit fix-its with ``nullptr`` instead of ``std::nullopt``
+  that will lead to compilation error.
+
 
 Options
 -------
@@ -46,4 +56,4 @@ Options
 
     Semicolon-separated list of fully qualified class names of custom smart
     pointers. Default value is `::std::unique_ptr;::std::shared_ptr;
-    ::std::optional;::boost::scoped_ptr;::boost::shared_ptr`.
+    ::boost::scoped_ptr;::boost::shared_ptr`.

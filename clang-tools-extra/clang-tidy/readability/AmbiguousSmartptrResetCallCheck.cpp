@@ -29,9 +29,8 @@ AST_MATCHER(CXXMethodDecl, hasOnlyDefaultParameters) {
   return true;
 }
 
-const auto DefaultSmartPointers =
-    "::std::shared_ptr;::std::unique_ptr;::std::optional;"
-    "::boost::shared_ptr;::boost::scoped_ptr";
+const auto DefaultSmartPointers = "::std::shared_ptr;::std::unique_ptr;"
+                                  "::boost::shared_ptr;::boost::scoped_ptr";
 } // namespace
 
 AmbiguousSmartptrResetCallCheck::AmbiguousSmartptrResetCallCheck(
