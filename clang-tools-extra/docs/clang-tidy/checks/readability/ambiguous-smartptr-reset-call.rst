@@ -46,4 +46,4 @@ Options
 
     Semicolon-separated list of fully qualified class names of custom smart
     pointers. Default value is `::std::unique_ptr;::std::shared_ptr;
-    ::std::optional;::boost::unique_ptr;::boost::shared_ptr`.
+    ::std::optional;::boost::scoped_ptr;::boost::shared_ptr`.
