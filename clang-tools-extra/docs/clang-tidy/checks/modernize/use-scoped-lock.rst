@@ -58,7 +58,7 @@ Limitations
 -----------
 
 The check will not emit warnings if ``std::lock_guard`` is used implicitly via
-``using``, ``typedef`` or ``template``:
+``using``, ``typedef`` or as ``template`` parameter:
 
 .. code-block:: c++
 
@@ -80,24 +80,23 @@ Options
 
 .. option:: WarnOnSingleLocks
 
-  When `true`, the check will warn on single ``std::lock_guard`` declarations
-  that can be replaced a single ``std::scoped_lock``. Set this option to
-  `false` if you want to get warnings only on multiple ``std::lock_guard``
-  declarations that can be replaced with a single ``std::scoped_lock``.
-  Default is `true`.
+  When `true`, the check will warn on single ``std::lock_guard`` declarations.
+  Set this option to `false` if you want to get warnings only on multiple
+  ``std::lock_guard`` declarations that can be replaced with a single
+  ``std::scoped_lock``. Default is `true`.
 
 .. option:: WarnOnUsingAndTypedef
 
   When `true`, the check will emit warnings if ``std::lock_guard`` is used
-  in ``using`` or ``typedef`` declarations. Default is `true`.
+  in ``using`` or ``typedef`` context. Default is `true`.
 
   .. code-block:: c++
 
     template <typename T>
-    using Lock = std::lock_guard<T>; // warning
+    using Lock = std::lock_guard<T>; // warning: use 'std::scoped_lock' instead of 'std::lock_guard'
     
-    using LockMutex = std::lock_guard<std::mutex>; // warning
+    using LockMutex = std::lock_guard<std::mutex>; // warning: use 'std::scoped_lock' instead of 'std::lock_guard'
     
-    typedef std::lock_guard<std::mutex> LockDef; // warning
+    typedef std::lock_guard<std::mutex> LockDef; // warning: use 'std::scoped_lock' instead of 'std::lock_guard'
 
-    using std::lock_guard; // warning
+    using std::lock_guard; // warning: use 'std::scoped_lock' instead of 'std::lock_guard'

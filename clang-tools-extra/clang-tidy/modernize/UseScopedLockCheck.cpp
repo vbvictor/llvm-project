@@ -238,7 +238,7 @@ void UseScopedLockCheck::emitDiag(const VarDecl *LockGuard,
   }
 
   // Create Fix-its only if we can find the constructor call to properly handle
-  // 'std::lock_guard l(m, std::adopt_lock)' case. Otherwise create fix-notes.
+  // 'std::lock_guard l(m, std::adopt_lock)' case.
   const auto *CtorCall = dyn_cast<CXXConstructExpr>(LockGuard->getInit());
   if (!CtorCall) {
     return;
