@@ -1,5 +1,5 @@
 // RUN: %check_clang_tidy -std=c++17-or-later %s modernize-use-scoped-lock %t -- \
-// RUN:   -config="{CheckOptions: {modernize-use-scoped-lock.WarnOnlyOnMultipleLocks: true}}" \
+// RUN:   -config="{CheckOptions: {modernize-use-scoped-lock.WarnOnSingleLocks: false}}" \
 // RUN:   -- -fno-delayed-template-parsing
 
 namespace std {

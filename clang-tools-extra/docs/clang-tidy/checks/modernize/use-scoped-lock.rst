@@ -78,11 +78,13 @@ The check will not emit warnings if ``std::lock_guard`` is used implicitly via
 Options
 -------
 
-.. option:: WarnOnlyOnMultipleLocks
+.. option:: WarnOnSingleLocks
 
-  When `true`, the check will only emit warnings if the there are multiple
-  consecutive ``std::lock_guard`` declarations that can be replaced with a
-  single ``std::scoped_lock`` declaration. Default is `false`.
+  When `true`, the check will warn on single ``std::lock_guard`` declarations
+  that can be replaced a single ``std::scoped_lock``. Set this option to
+  `false` if you want to get warnings only on multiple ``std::lock_guard``
+  declarations that can be replaced with a single ``std::scoped_lock``.
+  Default is `true`.
 
 .. option:: WarnOnUsingAndTypedef
 

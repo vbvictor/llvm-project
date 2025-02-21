@@ -135,11 +135,12 @@ const StringRef UseScopedLockMessage =
 UseScopedLockCheck::UseScopedLockCheck(StringRef Name,
                                        ClangTidyContext *Context)
     : ClangTidyCheck(Name, Context),
-      WarnOnlyOnMultipleLocks(Options.get("WarnOnlyOnMultipleLocks", false)),
+      WarnOnSingleLocks(Options.get("WarnOnSingleLocks", true)),
       WarnOnUsingAndTypedef(Options.get("WarnOnUsingAndTypedef", true)) {}
 
 void UseScopedLockCheck::storeOptions(ClangTidyOptions::OptionMap &Opts) {
-  Options.store(Opts, "WarnOnlyMultipleLocks", WarnOnlyOnMultipleLocks);
+  Options.store(Opts, "WarnOnSingleLocks", WarnOnSingleLocks);
+  Options.store(Opts, "WarnOnUsingAndTypedef", WarnOnUsingAndTypedef);
 }
 
 void UseScopedLockCheck::registerMatchers(MatchFinder *Finder) {
@@ -149,8 +150,8 @@ void UseScopedLockCheck::registerMatchers(MatchFinder *Finder) {
   auto LockGuardType = qualType(hasDeclaration(LockGuardClassDecl));
   auto LockVarDecl = varDecl(hasType(LockGuardType));
 
-  // Match CompoundStmt with only one 'std::lock_guard'
-  if (!WarnOnlyOnMultipleLocks) {
+  if (WarnOnSingleLocks) {
+    // Match CompoundStmt with only one 'std::lock_guard'
     Finder->addMatcher(
         compoundStmt(unless(isExpansionInSystemHeader()),
                      has(declStmt(has(LockVarDecl.bind("lock-decl-single")))),
@@ -276,7 +277,7 @@ void UseScopedLockCheck::emitDiag(
     const llvm::SmallVector<llvm::SmallVector<const VarDecl *>> &LockGroups,
     const ast_matchers::MatchFinder::MatchResult &Result) {
   for (const llvm::SmallVector<const VarDecl *> &Group : LockGroups) {
-    if (Group.size() == 1 && !WarnOnlyOnMultipleLocks) {
+    if (Group.size() == 1 && WarnOnSingleLocks) {
       emitDiag(Group[0], Result);
     } else {
       diag(Group[0]->getBeginLoc(),

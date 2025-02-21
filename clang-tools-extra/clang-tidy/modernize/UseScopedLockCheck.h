@@ -45,7 +45,7 @@ private:
   void emitDiag(const UsingDecl *UsingDecl,
                 const ast_matchers::MatchFinder::MatchResult &Result);
 
-  const bool WarnOnlyOnMultipleLocks;
+  const bool WarnOnSingleLocks;
   const bool WarnOnUsingAndTypedef;
 };
 
