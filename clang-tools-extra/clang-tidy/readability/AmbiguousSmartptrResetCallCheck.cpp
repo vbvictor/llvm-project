@@ -12,7 +12,6 @@
 #include "clang/ASTMatchers/ASTMatchFinder.h"
 #include "clang/ASTMatchers/ASTMatchers.h"
 #include "clang/Lex/Lexer.h"
-#include <utility>
 
 using namespace clang::ast_matchers;
 
@@ -30,7 +29,7 @@ AST_MATCHER(CXXMethodDecl, hasOnlyDefaultParameters) {
 }
 
 const auto DefaultSmartPointers = "::std::shared_ptr;::std::unique_ptr;"
-                                  "::boost::shared_ptr;::boost::scoped_ptr";
+                                  "::boost::shared_ptr";
 } // namespace
 
 AmbiguousSmartptrResetCallCheck::AmbiguousSmartptrResetCallCheck(

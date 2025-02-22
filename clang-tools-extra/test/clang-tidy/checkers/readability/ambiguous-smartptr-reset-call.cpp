@@ -390,13 +390,6 @@ void NestedUsingPositive() {
 namespace boost {
 
 template <typename T>
-struct scoped_ptr {
-  T& operator*() const;
-  T* operator->() const;
-  void reset(T* p = 0);
-};
-
-template <typename T>
 struct shared_ptr {
   T& operator*() const;
   T* operator->() const;
@@ -407,16 +400,6 @@ struct shared_ptr {
 } // namespace boost
 
 void PositiveOtherClasses() {
-  boost::scoped_ptr<Resettable> sc;
-  sc.reset();
-  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: ambiguous call to 'reset()' on a smart pointer with pointee that also has a 'reset()' method, prefer more explicit approach
-  // CHECK-MESSAGES: :[[@LINE-2]]:3: note: consider assigning the pointer to 'nullptr' here
-  // CHECK-FIXES: sc = nullptr;
-  sc->reset();
-  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: ambiguous call to 'reset()' on a pointee of a smart pointer, prefer more explicit approach
-  // CHECK-MESSAGES: :[[@LINE-2]]:3: note: consider dereferencing smart pointer to call 'reset' method of the pointee here
-  // CHECK-FIXES: (*sc).reset();
-
   boost::shared_ptr<Resettable> sh;
   sh.reset();
   // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: ambiguous call to 'reset()' on a smart pointer with pointee that also has a 'reset()' method, prefer more explicit approach
