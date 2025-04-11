@@ -31,6 +31,7 @@ private:
 
   const unsigned int MinTypeNameLength;
   const bool RemoveStars;
+  const std::vector<StringRef> SmartPointers;
 };
 
 } // namespace clang::tidy::modernize

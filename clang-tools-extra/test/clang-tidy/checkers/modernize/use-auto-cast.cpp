@@ -1,5 +1,7 @@
 // RUN: %check_clang_tidy --match-partial-fixes %s modernize-use-auto %t -- \
-// RUN:   -config="{CheckOptions: {modernize-use-auto.MinTypeNameLength: '0'}}" \
+// RUN:   -config="{CheckOptions: { \
+// RUN:     modernize-use-auto.MinTypeNameLength: '0', \
+// RUN:     modernize-use-auto.SmartPointers: '::std::shared_ptr;MyPtr'}}" \
 // RUN:   -- -I %S/Inputs/use-auto -frtti
 
 struct A {
@@ -230,4 +232,77 @@ void f_template_cast()
   // Don't warn for implicit variables.
   for (auto &c : template_reference_cast<StringRef>(*a)) {
   }
+}
+
+
+namespace std {
+
+template <typename T>
+class shared_ptr {};
+
+template< class T, class U >
+shared_ptr<T> static_pointer_cast(const shared_ptr<U>& r);
+
+template< class T, class U >
+shared_ptr<T> static_pointer_cast(shared_ptr<U>&& r);
+
+} // namespace std
+
+namespace boost {
+
+template <typename T>
+class shared_ptr {};
+
+template< class T, class U >
+shared_ptr<T> dynamic_pointer_cast(const shared_ptr<U>& r);
+
+template< class T, class U >
+shared_ptr<T> dynamic_pointer_cast(shared_ptr<U>&& r);
+
+} // namespace boost
+
+template <typename T>
+class MyPtr {};
+
+template< class T, class U >
+MyPtr<T> my_pointer_cast(const MyPtr<U>& r);
+
+
+void f_smart_pointer_cast()
+{
+  std::shared_ptr<A> base;
+  
+  std::shared_ptr<B> sp1 = std::static_pointer_cast<B>(std::shared_ptr<A>(base));
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: use auto when initializing with a template cast to avoid duplicating the type name
+  // CHECK-FIXES: auto sp1 = std::static_pointer_cast<B>(std::shared_ptr<A>(base));
+  
+  std::shared_ptr<const B> sp2 = std::dynamic_pointer_cast<const B>(base);
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: use auto when initializing with a template cast to avoid duplicating the type name
+  // CHECK-FIXES: auto sp2 = std::dynamic_pointer_cast<const B>(std::shared_ptr<A>(base));
+  
+  // MyPtr is in the SmartPointers list, should be transformed
+  MyPtr<B> mp1 = my_pointer_cast<B>(MyPtr<A>(base));
+  // CHECK-MESSAGES: :[[@LINE-1]]:3: warning: use auto when initializing with a template cast to avoid duplicating the type name
+  // CHECK-FIXES: auto mp1 = my_pointer_cast<B>(MyPtr<A>(base));
+  
+  // Multiple declarations with same smart pointer cast should be transformed
+  std::shared_ptr<B> mp2 = std::static_pointer_cast<B>(std::shared_ptr<A>(base)),
+                    mp3 = std::static_pointer_cast<B>(std::shared_ptr<A>(base));
+  // CHECK-MESSAGES: :[[@LINE-2]]:3: warning: use auto when initializing with a template cast to avoid duplicating the type name
+  // CHECK-FIXES: auto mp2 = std::static_pointer_cast<B>(std::shared_ptr<A>(base)),
+  // CHECK-FIXES:                     mp3 = std::static_pointer_cast<B>(std::shared_ptr<A>(base));
+  
+  // Test const qualifier
+  const std::shared_ptr<B> sp3 = std::static_pointer_cast<B>(std::shared_ptr<A>(base));
+  // CHECK-MESSAGES: :[[@LINE-1]]:9: warning: use auto when initializing with a template cast to avoid duplicating the type name
+  // CHECK-FIXES: const auto sp3 = std::static_pointer_cast<B>(std::shared_ptr<A>(base));
+  
+  // boost::shared_ptr is NOT in the SmartPointers list (for this test), should NOT be transformed
+  boost::shared_ptr<B> bsp = boost::dynamic_pointer_cast<B>(boost::shared_ptr<A>(base));
+  
+  // Don't warn when auto is already being used
+  auto sp4 = std::static_pointer_cast<B>(std::shared_ptr<A>(base));
+  
+  // Don't warn for mismatched var and initializer types
+  std::shared_ptr<A> sp5 = std::static_pointer_cast<B>(std::shared_ptr<A>(base));
 }

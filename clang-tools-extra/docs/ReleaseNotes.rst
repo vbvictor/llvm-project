@@ -177,6 +177,11 @@ Changes in existing checks
   excluding variables with ``thread_local`` storage class specifier from being
   matched.
 
+- Improved :doc:`modernize-use-auto
+  <clang-tidy/checks/modernize/use-auto>` check by adding support for 
+  smart pointer casts and specifying smart pointers using `SmartPointers`
+  option.
+
 - Improved :doc:`modernize-use-default-member-init
   <clang-tidy/checks/modernize/use-default-member-init>` check by matching
   ``constexpr`` and ``static``` values on member initialization and by detecting

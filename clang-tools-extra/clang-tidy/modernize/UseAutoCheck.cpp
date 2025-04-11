@@ -7,6 +7,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "UseAutoCheck.h"
+#include "../utils/OptionsUtils.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/TypeLoc.h"
 #include "clang/ASTMatchers/ASTMatchFinder.h"
@@ -14,6 +15,8 @@
 #include "clang/Basic/CharInfo.h"
 #include "clang/Tooling/FixIt.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/StringRef.h"
+#include <vector>
 
 using namespace clang;
 using namespace clang::ast_matchers;
@@ -26,6 +29,7 @@ const char IteratorDeclStmtId[] = "iterator_decl";
 const char DeclWithNewId[] = "decl_new";
 const char DeclWithCastId[] = "decl_cast";
 const char DeclWithTemplateCastId[] = "decl_template";
+const char DefaultSmartPointers[] = "::std::shared_ptr;::boost::shared_ptr;";
 
 size_t getTypeNameLength(bool RemoveStars, StringRef Text) {
   enum CharType { Space, Alpha, Punctuation };
@@ -234,7 +238,8 @@ StatementMatcher makeDeclWithCastMatcher() {
       .bind(DeclWithCastId);
 }
 
-StatementMatcher makeDeclWithTemplateCastMatcher() {
+StatementMatcher
+makeDeclWithTemplateCastMatcher(const std::vector<StringRef> SmartPointers) {
   auto ST =
       substTemplateTypeParmType(hasReplacementType(equalsBoundNode("arg")));
 
@@ -245,17 +250,24 @@ StatementMatcher makeDeclWithTemplateCastMatcher() {
   auto TemplateArg =
       hasTemplateArgument(0, refersToType(qualType().bind("arg")));
 
-  auto TemplateCall = callExpr(
-      ExplicitCall,
-      callee(functionDecl(TemplateArg,
-                          returns(anyOf(ST, pointsTo(ST), references(ST))))));
+  auto DirectTemplateReturn = returns(anyOf(ST, pointsTo(ST), references(ST)));
+
+  auto SmartPointerReturn = returns(templateSpecializationType(
+      hasDeclaration(classTemplateDecl(hasAnyName(SmartPointers))),
+      hasTemplateArgument(0, refersToType(qualType(equalsBoundNode("arg"))))));
+
+  auto TemplateCall =
+      callExpr(ExplicitCall,
+               callee(functionDecl(TemplateArg, anyOf(DirectTemplateReturn,
+                                                      SmartPointerReturn))));
 
   return declStmt(unless(has(varDecl(
                       unless(hasInitializer(ignoringImplicit(TemplateCall)))))))
       .bind(DeclWithTemplateCastId);
 }
 
-StatementMatcher makeCombinedMatcher() {
+StatementMatcher
+makeCombinedMatcher(const std::vector<StringRef> SmartPointers) {
   return declStmt(
       // At least one varDecl should be a child of the declStmt to ensure
       // it's a declaration list and avoid matching other declarations,
@@ -265,7 +277,8 @@ StatementMatcher makeCombinedMatcher() {
       unless(has(varDecl(anyOf(hasType(autoType()),
                                hasType(qualType(hasDescendant(autoType()))))))),
       anyOf(makeIteratorDeclMatcher(), makeDeclWithNewMatcher(),
-            makeDeclWithCastMatcher(), makeDeclWithTemplateCastMatcher()));
+            makeDeclWithCastMatcher(),
+            makeDeclWithTemplateCastMatcher(SmartPointers)));
 }
 
 } // namespace
@@ -273,15 +286,20 @@ StatementMatcher makeCombinedMatcher() {
 UseAutoCheck::UseAutoCheck(StringRef Name, ClangTidyContext *Context)
     : ClangTidyCheck(Name, Context),
       MinTypeNameLength(Options.get("MinTypeNameLength", 5)),
-      RemoveStars(Options.get("RemoveStars", false)) {}
+      RemoveStars(Options.get("RemoveStars", false)),
+      SmartPointers(utils::options::parseStringList(
+          Options.get("SmartPointers", DefaultSmartPointers))) {}
 
 void UseAutoCheck::storeOptions(ClangTidyOptions::OptionMap &Opts) {
   Options.store(Opts, "MinTypeNameLength", MinTypeNameLength);
   Options.store(Opts, "RemoveStars", RemoveStars);
+  Options.store(Opts, "SmartPointers",
+                utils::options::serializeStringList(SmartPointers));
 }
 
 void UseAutoCheck::registerMatchers(MatchFinder *Finder) {
-  Finder->addMatcher(traverse(TK_AsIs, makeCombinedMatcher()), this);
+  Finder->addMatcher(traverse(TK_AsIs, makeCombinedMatcher(SmartPointers)),
+                     this);
 }
 
 void UseAutoCheck::replaceIterators(const DeclStmt *D, ASTContext *Context) {
