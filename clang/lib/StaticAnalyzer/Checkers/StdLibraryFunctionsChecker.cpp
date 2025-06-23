@@ -41,6 +41,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "ErrnoModeling.h"
+#include "FunctionSignature.h"
 #include "clang/StaticAnalyzer/Checkers/BuiltinCheckerRegistration.h"
 #include "clang/StaticAnalyzer/Core/BugReporter/BugType.h"
 #include "clang/StaticAnalyzer/Core/Checker.h"
@@ -49,7 +50,6 @@
 #include "clang/StaticAnalyzer/Core/PathSensitive/CheckerContext.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/CheckerHelpers.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/DynamicExtent.h"
-#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/FormatVariadic.h"
@@ -670,62 +670,9 @@ class StdLibraryFunctionsChecker
     StringRef getNote() const { return Note; }
   };
 
-  using ArgTypes = ArrayRef<std::optional<QualType>>;
-  using RetType = std::optional<QualType>;
-
   // A placeholder type, we use it whenever we do not care about the concrete
   // type in a Signature.
   const QualType Irrelevant{};
-  bool static isIrrelevant(QualType T) { return T.isNull(); }
-
-  // The signature of a function we want to describe with a summary. This is a
-  // concessive signature, meaning there may be irrelevant types in the
-  // signature which we do not check against a function with concrete types.
-  // All types in the spec need to be canonical.
-  class Signature {
-    using ArgQualTypes = std::vector<QualType>;
-    ArgQualTypes ArgTys;
-    QualType RetTy;
-    // True if any component type is not found by lookup.
-    bool Invalid = false;
-
-  public:
-    // Construct a signature from optional types. If any of the optional types
-    // are not set then the signature will be invalid.
-    Signature(ArgTypes ArgTys, RetType RetTy) {
-      for (std::optional<QualType> Arg : ArgTys) {
-        if (!Arg) {
-          Invalid = true;
-          return;
-        } else {
-          assertArgTypeSuitableForSignature(*Arg);
-          this->ArgTys.push_back(*Arg);
-        }
-      }
-      if (!RetTy) {
-        Invalid = true;
-        return;
-      } else {
-        assertRetTypeSuitableForSignature(*RetTy);
-        this->RetTy = *RetTy;
-      }
-    }
-
-    bool isInvalid() const { return Invalid; }
-    bool matches(const FunctionDecl *FD) const;
-
-  private:
-    static void assertArgTypeSuitableForSignature(QualType T) {
-      assert((T.isNull() || !T->isVoidType()) &&
-             "We should have no void types in the spec");
-      assert((T.isNull() || T.isCanonical()) &&
-             "We should only have canonical types in the spec");
-    }
-    static void assertRetTypeSuitableForSignature(QualType T) {
-      assert((T.isNull() || T.isCanonical()) &&
-             "We should only have canonical types in the spec");
-    }
-  };
 
   static QualType getArgType(const FunctionDecl *FD, ArgNo ArgN) {
     assert(FD && "Function must be set");
@@ -1494,46 +1441,6 @@ bool StdLibraryFunctionsChecker::evalCall(const CallEvent &Call,
   llvm_unreachable("Unknown invalidation kind!");
 }
 
-bool StdLibraryFunctionsChecker::Signature::matches(
-    const FunctionDecl *FD) const {
-  assert(!isInvalid());
-  // Check the number of arguments.
-  if (FD->param_size() != ArgTys.size())
-    return false;
-
-  // The "restrict" keyword is illegal in C++, however, many libc
-  // implementations use the "__restrict" compiler intrinsic in functions
-  // prototypes. The "__restrict" keyword qualifies a type as a restricted type
-  // even in C++.
-  // In case of any non-C99 languages, we don't want to match based on the
-  // restrict qualifier because we cannot know if the given libc implementation
-  // qualifies the paramter type or not.
-  auto RemoveRestrict = [&FD](QualType T) {
-    if (!FD->getASTContext().getLangOpts().C99)
-      T.removeLocalRestrict();
-    return T;
-  };
-
-  // Check the return type.
-  if (!isIrrelevant(RetTy)) {
-    QualType FDRetTy = RemoveRestrict(FD->getReturnType().getCanonicalType());
-    if (RetTy != FDRetTy)
-      return false;
-  }
-
-  // Check the argument types.
-  for (auto [Idx, ArgTy] : llvm::enumerate(ArgTys)) {
-    if (isIrrelevant(ArgTy))
-      continue;
-    QualType FDArgTy =
-        RemoveRestrict(FD->getParamDecl(Idx)->getType().getCanonicalType());
-    if (ArgTy != FDArgTy)
-      return false;
-  }
-
-  return true;
-}
-
 std::optional<StdLibraryFunctionsChecker::Summary>
 StdLibraryFunctionsChecker::findFunctionSummary(const FunctionDecl *FD,
                                                 CheckerContext &C) const {
@@ -1568,75 +1475,8 @@ void StdLibraryFunctionsChecker::initFunctionSummaries(
   const ASTContext &ACtx = BVF.getContext();
   Preprocessor &PP = C.getPreprocessor();
 
-  // Helper class to lookup a type by its name.
-  class LookupType {
-    const ASTContext &ACtx;
+  TypeFactory TF(ACtx);
 
-  public:
-    LookupType(const ASTContext &ACtx) : ACtx(ACtx) {}
-
-    // Find the type. If not found then the optional is not set.
-    std::optional<QualType> operator()(StringRef Name) {
-      IdentifierInfo &II = ACtx.Idents.get(Name);
-      auto LookupRes = ACtx.getTranslationUnitDecl()->lookup(&II);
-      if (LookupRes.empty())
-        return std::nullopt;
-
-      // Prioritize typedef declarations.
-      // This is needed in case of C struct typedefs. E.g.:
-      //   typedef struct FILE FILE;
-      // In this case, we have a RecordDecl 'struct FILE' with the name 'FILE'
-      // and we have a TypedefDecl with the name 'FILE'.
-      for (Decl *D : LookupRes)
-        if (auto *TD = dyn_cast<TypedefNameDecl>(D))
-          return ACtx.getTypeDeclType(TD).getCanonicalType();
-
-      // Find the first TypeDecl.
-      // There maybe cases when a function has the same name as a struct.
-      // E.g. in POSIX: `struct stat` and the function `stat()`:
-      //   int stat(const char *restrict path, struct stat *restrict buf);
-      for (Decl *D : LookupRes)
-        if (auto *TD = dyn_cast<TypeDecl>(D))
-          return ACtx.getTypeDeclType(TD).getCanonicalType();
-      return std::nullopt;
-    }
-  } lookupTy(ACtx);
-
-  // Below are auxiliary classes to handle optional types that we get as a
-  // result of the lookup.
-  class GetRestrictTy {
-    const ASTContext &ACtx;
-
-  public:
-    GetRestrictTy(const ASTContext &ACtx) : ACtx(ACtx) {}
-    QualType operator()(QualType Ty) {
-      return ACtx.getLangOpts().C99 ? ACtx.getRestrictType(Ty) : Ty;
-    }
-    std::optional<QualType> operator()(std::optional<QualType> Ty) {
-      if (Ty)
-        return operator()(*Ty);
-      return std::nullopt;
-    }
-  } getRestrictTy(ACtx);
-  class GetPointerTy {
-    const ASTContext &ACtx;
-
-  public:
-    GetPointerTy(const ASTContext &ACtx) : ACtx(ACtx) {}
-    QualType operator()(QualType Ty) { return ACtx.getPointerType(Ty); }
-    std::optional<QualType> operator()(std::optional<QualType> Ty) {
-      if (Ty)
-        return operator()(*Ty);
-      return std::nullopt;
-    }
-  } getPointerTy(ACtx);
-  class {
-  public:
-    std::optional<QualType> operator()(std::optional<QualType> Ty) {
-      return Ty ? std::optional<QualType>(Ty->withConst()) : std::nullopt;
-    }
-    QualType operator()(QualType Ty) { return Ty.withConst(); }
-  } getConstTy;
   class GetMaxValue {
     BasicValueFactory &BVF;
 
@@ -1660,32 +1500,29 @@ void StdLibraryFunctionsChecker::initFunctionSummaries(
   // of function summary for common cases (eg. ssize_t could be int or long
   // or long long, so three summary variants would be enough).
   // Of course, function variants are also useful for C++ overloads.
-  const QualType VoidTy = ACtx.VoidTy;
-  const QualType CharTy = ACtx.CharTy;
-  const QualType WCharTy = ACtx.WCharTy;
-  const QualType IntTy = ACtx.IntTy;
-  const QualType UnsignedIntTy = ACtx.UnsignedIntTy;
-  const QualType LongTy = ACtx.LongTy;
-  const QualType SizeTy = ACtx.getSizeType();
+  const QualType VoidTy = TF.getVoidTy();
+  const QualType WCharTy = TF.getWCharTy();
+  const QualType IntTy = TF.getIntTy();
+  const QualType UnsignedIntTy = TF.getUnsignedIntTy();
+  const QualType LongTy = TF.getLongTy();
+  const QualType SizeTy = TF.getSizeTy();
 
-  const QualType VoidPtrTy = getPointerTy(VoidTy); // void *
-  const QualType IntPtrTy = getPointerTy(IntTy);   // int *
+  const QualType VoidPtrTy = TF.getVoidPtrTy();     // void *
+  const QualType IntPtrTy = TF.getPointerTy(IntTy); // int *
   const QualType UnsignedIntPtrTy =
-      getPointerTy(UnsignedIntTy); // unsigned int *
-  const QualType VoidPtrRestrictTy = getRestrictTy(VoidPtrTy);
-  const QualType ConstVoidPtrTy =
-      getPointerTy(getConstTy(VoidTy));            // const void *
-  const QualType CharPtrTy = getPointerTy(CharTy); // char *
-  const QualType CharPtrRestrictTy = getRestrictTy(CharPtrTy);
-  const QualType ConstCharPtrTy =
-      getPointerTy(getConstTy(CharTy)); // const char *
-  const QualType ConstCharPtrRestrictTy = getRestrictTy(ConstCharPtrTy);
-  const QualType Wchar_tPtrTy = getPointerTy(WCharTy); // wchar_t *
+      TF.getPointerTy(UnsignedIntTy); // unsigned int *
+  const QualType VoidPtrRestrictTy = TF.getRestrictTy(TF.getVoidPtrTy());
+  const QualType ConstVoidPtrTy = TF.getConstVoidPtrTy(); // const void *
+  const QualType CharPtrTy = TF.getCharPtrTy();           // char *
+  const QualType CharPtrRestrictTy = TF.getRestrictTy(TF.getCharPtrTy());
+  const QualType ConstCharPtrTy = TF.getConstCharPtrTy(); // const char *
+  const QualType ConstCharPtrRestrictTy = TF.getRestrictTy(TF.getConstCharPtrTy());
+  const QualType Wchar_tPtrTy = TF.getPointerTy(WCharTy); // wchar_t *
   const QualType ConstWchar_tPtrTy =
-      getPointerTy(getConstTy(WCharTy)); // const wchar_t *
-  const QualType ConstVoidPtrRestrictTy = getRestrictTy(ConstVoidPtrTy);
-  const QualType SizePtrTy = getPointerTy(SizeTy);
-  const QualType SizePtrRestrictTy = getRestrictTy(SizePtrTy);
+      TF.getPointerTy(TF.getConstTy(WCharTy)); // const wchar_t *
+  const QualType ConstVoidPtrRestrictTy = TF.getRestrictTy(TF.getConstVoidPtrTy());
+  const QualType SizePtrTy = TF.getPointerTy(SizeTy);
+  const QualType SizePtrRestrictTy = TF.getRestrictTy(SizePtrTy);
 
   const RangeInt IntMax = BVF.getMaxValue(IntTy)->getLimitedValue();
   const RangeInt UnsignedIntMax =
@@ -1803,18 +1640,22 @@ void StdLibraryFunctionsChecker::initFunctionSummaries(
                                                       SizeArg2N);
   };
 
-  std::optional<QualType> FileTy = lookupTy("FILE");
-  std::optional<QualType> FilePtrTy = getPointerTy(FileTy);
-  std::optional<QualType> FilePtrRestrictTy = getRestrictTy(FilePtrTy);
+  std::optional<QualType> FileTy = TF.lookupTy("FILE");
+  std::optional<QualType> FilePtrTy = TF.getPointerTy(FileTy);
+  std::optional<QualType> FilePtrRestrictTy = TF.getRestrictTy(FilePtrTy);
 
-  std::optional<QualType> FPosTTy = lookupTy("fpos_t");
-  std::optional<QualType> FPosTPtrTy = getPointerTy(FPosTTy);
-  std::optional<QualType> ConstFPosTPtrTy = getPointerTy(getConstTy(FPosTTy));
-  std::optional<QualType> FPosTPtrRestrictTy = getRestrictTy(FPosTPtrTy);
+  std::optional<QualType> FPosTTy = TF.lookupTy("fpos_t");
+  std::optional<QualType> FPosTPtrTy = TF.getPointerTy(FPosTTy);
+  std::optional<QualType> ConstFPosTPtrTy =
+      TF.getPointerTy(TF.getConstTy(FPosTTy));
+  std::optional<QualType> FPosTPtrRestrictTy = TF.getRestrictTy(FPosTPtrTy);
 
   constexpr llvm::StringLiteral GenericSuccessMsg(
       "Assuming that '{0}' is successful");
   constexpr llvm::StringLiteral GenericFailureMsg("Assuming that '{0}' fails");
+
+  using ArgTypes = Signature::ArgTypes;
+  using RetType = Signature::RetType;
 
   // We are finally ready to define specifications for all supported functions.
   //
@@ -2070,7 +1911,7 @@ void StdLibraryFunctionsChecker::initFunctionSummaries(
                                     RetType{SizeTy}),
                           FreadSummary);
 
-  std::optional<QualType> Ssize_tTy = lookupTy("ssize_t");
+  std::optional<QualType> Ssize_tTy = TF.lookupTy("ssize_t");
   std::optional<RangeInt> Ssize_tMax = getMaxValue(Ssize_tTy);
 
   auto ReadSummary =
@@ -2097,7 +1938,7 @@ void StdLibraryFunctionsChecker::initFunctionSummaries(
                                       Range({-1, -1}, {1, Ssize_tMax}))},
                 ErrnoIrrelevant);
 
-  QualType CharPtrPtrRestrictTy = getRestrictTy(getPointerTy(CharPtrTy));
+  QualType CharPtrPtrRestrictTy = TF.getRestrictTy(TF.getPointerTy(TF.getCharPtrTy()));
 
   // getline()-like functions either fail or read at least the delimiter.
   // FIXME these are actually defined by POSIX and not by the C standard, we
@@ -2238,7 +2079,7 @@ void StdLibraryFunctionsChecker::initFunctionSummaries(
             .Case(ReturnsMinusOne, ErrnoNEZeroIrrelevant, GenericFailureMsg)
             .ArgConstraint(NotNull(ArgNo(0))));
 
-    std::optional<QualType> Off_tTy = lookupTy("off_t");
+    std::optional<QualType> Off_tTy = TF.lookupTy("off_t");
     std::optional<RangeInt> Off_tMax = getMaxValue(Off_tTy);
 
     // int fgetc(FILE *stream);
@@ -2565,7 +2406,7 @@ void StdLibraryFunctionsChecker::initFunctionSummaries(
             .ArgConstraint(
                 ArgumentCondition(0, WithinRange, Range(0, IntMax))));
 
-    std::optional<QualType> Mode_tTy = lookupTy("mode_t");
+    std::optional<QualType> Mode_tTy = TF.lookupTy("mode_t");
 
     // int creat(const char *pathname, mode_t mode);
     addToFunctionSummaryMap(
@@ -2583,8 +2424,8 @@ void StdLibraryFunctionsChecker::initFunctionSummaries(
             .ArgConstraint(
                 ArgumentCondition(0, WithinRange, Range(0, UnsignedIntMax))));
 
-    std::optional<QualType> DirTy = lookupTy("DIR");
-    std::optional<QualType> DirPtrTy = getPointerTy(DirTy);
+    std::optional<QualType> DirTy = TF.lookupTy("DIR");
+    std::optional<QualType> DirPtrTy = TF.getPointerTy(DirTy);
 
     // int dirfd(DIR *dirp);
     addToFunctionSummaryMap(
@@ -2690,7 +2531,7 @@ void StdLibraryFunctionsChecker::initFunctionSummaries(
             .ArgConstraint(ValidFileDescriptorOrAtFdcwd(ArgNo(0)))
             .ArgConstraint(NotNull(ArgNo(1))));
 
-    std::optional<QualType> Dev_tTy = lookupTy("dev_t");
+    std::optional<QualType> Dev_tTy = TF.lookupTy("dev_t");
 
     // int mknod(const char *pathname, mode_t mode, dev_t dev);
     addToFunctionSummaryMap(
@@ -2740,8 +2581,8 @@ void StdLibraryFunctionsChecker::initFunctionSummaries(
             .ArgConstraint(
                 ArgumentCondition(0, WithinRange, Range(0, IntMax))));
 
-    std::optional<QualType> Uid_tTy = lookupTy("uid_t");
-    std::optional<QualType> Gid_tTy = lookupTy("gid_t");
+    std::optional<QualType> Uid_tTy = TF.lookupTy("uid_t");
+    std::optional<QualType> Gid_tTy = TF.lookupTy("gid_t");
 
     // int fchownat(int dirfd, const char *pathname, uid_t owner, gid_t group,
     //              int flags);
@@ -2840,10 +2681,10 @@ void StdLibraryFunctionsChecker::initFunctionSummaries(
             .ArgConstraint(ValidFileDescriptorOrAtFdcwd(ArgNo(0)))
             .ArgConstraint(NotNull(ArgNo(1))));
 
-    std::optional<QualType> StructStatTy = lookupTy("stat");
-    std::optional<QualType> StructStatPtrTy = getPointerTy(StructStatTy);
+    std::optional<QualType> StructStatTy = TF.lookupTy("stat");
+    std::optional<QualType> StructStatPtrTy = TF.getPointerTy(StructStatTy);
     std::optional<QualType> StructStatPtrRestrictTy =
-        getRestrictTy(StructStatPtrTy);
+        TF.getRestrictTy(StructStatPtrTy);
 
     // int fstat(int fd, struct stat *statbuf);
     addToFunctionSummaryMap(
@@ -2964,7 +2805,7 @@ void StdLibraryFunctionsChecker::initFunctionSummaries(
             .ArgConstraint(
                 ArgumentCondition(4, WithinRange, Range(-1, IntMax))));
 
-    std::optional<QualType> Off64_tTy = lookupTy("off64_t");
+    std::optional<QualType> Off64_tTy = TF.lookupTy("off64_t");
     // void *mmap64(void *addr, size_t length, int prot, int flags, int fd,
     // off64_t offset);
     // FIXME: Improve for errno modeling.
@@ -3073,7 +2914,7 @@ void StdLibraryFunctionsChecker::initFunctionSummaries(
             .Case({IsNull(Ret)}, ErrnoNEZeroIrrelevant, GenericFailureMsg)
             .ArgConstraint(NotNull(ArgNo(0))));
 
-    QualType CharPtrConstPtr = getPointerTy(getConstTy(CharPtrTy));
+    QualType CharPtrConstPtr = TF.getPointerTy(TF.getConstTy(CharPtrTy));
 
     // int execv(const char *path, char *const argv[]);
     addToFunctionSummaryMap(
@@ -3103,19 +2944,19 @@ void StdLibraryFunctionsChecker::initFunctionSummaries(
             .ArgConstraint(NotNull(ArgNo(1)))
             .ArgConstraint(NotNull(ArgNo(2))));
 
-    std::optional<QualType> StructSockaddrTy = lookupTy("sockaddr");
+    std::optional<QualType> StructSockaddrTy = TF.lookupTy("sockaddr");
     std::optional<QualType> StructSockaddrPtrTy =
-        getPointerTy(StructSockaddrTy);
+        TF.getPointerTy(StructSockaddrTy);
     std::optional<QualType> ConstStructSockaddrPtrTy =
-        getPointerTy(getConstTy(StructSockaddrTy));
+        TF.getPointerTy(TF.getConstTy(StructSockaddrTy));
     std::optional<QualType> StructSockaddrPtrRestrictTy =
-        getRestrictTy(StructSockaddrPtrTy);
+        TF.getRestrictTy(StructSockaddrPtrTy);
     std::optional<QualType> ConstStructSockaddrPtrRestrictTy =
-        getRestrictTy(ConstStructSockaddrPtrTy);
-    std::optional<QualType> Socklen_tTy = lookupTy("socklen_t");
-    std::optional<QualType> Socklen_tPtrTy = getPointerTy(Socklen_tTy);
+        TF.getRestrictTy(ConstStructSockaddrPtrTy);
+    std::optional<QualType> Socklen_tTy = TF.lookupTy("socklen_t");
+    std::optional<QualType> Socklen_tPtrTy = TF.getPointerTy(Socklen_tTy);
     std::optional<QualType> Socklen_tPtrRestrictTy =
-        getRestrictTy(Socklen_tPtrTy);
+        TF.getRestrictTy(Socklen_tPtrTy);
     std::optional<RangeInt> Socklen_tMax = getMaxValue(Socklen_tTy);
 
     // In 'socket.h' of some libc implementations with C99, sockaddr parameter
@@ -3334,10 +3175,10 @@ void StdLibraryFunctionsChecker::initFunctionSummaries(
             .ArgConstraint(BufferSize(/*Buffer=*/ArgNo(1),
                                       /*BufSize=*/ArgNo(2))));
 
-    std::optional<QualType> StructMsghdrTy = lookupTy("msghdr");
-    std::optional<QualType> StructMsghdrPtrTy = getPointerTy(StructMsghdrTy);
+    std::optional<QualType> StructMsghdrTy = TF.lookupTy("msghdr");
+    std::optional<QualType> StructMsghdrPtrTy = TF.getPointerTy(StructMsghdrTy);
     std::optional<QualType> ConstStructMsghdrPtrTy =
-        getPointerTy(getConstTy(StructMsghdrTy));
+        TF.getPointerTy(TF.getConstTy(StructMsghdrTy));
 
     // ssize_t recvmsg(int sockfd, struct msghdr *msg, int flags);
     addToFunctionSummaryMap(
@@ -3454,8 +3295,9 @@ void StdLibraryFunctionsChecker::initFunctionSummaries(
             .ArgConstraint(
                 ArgumentCondition(5, WithinRange, Range(0, Socklen_tMax))));
 
-    std::optional<QualType> StructUtimbufTy = lookupTy("utimbuf");
-    std::optional<QualType> StructUtimbufPtrTy = getPointerTy(StructUtimbufTy);
+    std::optional<QualType> StructUtimbufTy = TF.lookupTy("utimbuf");
+    std::optional<QualType> StructUtimbufPtrTy =
+        TF.getPointerTy(StructUtimbufTy);
 
     // int utime(const char *filename, struct utimbuf *buf);
     addToFunctionSummaryMap(
@@ -3466,11 +3308,11 @@ void StdLibraryFunctionsChecker::initFunctionSummaries(
             .Case(ReturnsMinusOne, ErrnoNEZeroIrrelevant, GenericFailureMsg)
             .ArgConstraint(NotNull(ArgNo(0))));
 
-    std::optional<QualType> StructTimespecTy = lookupTy("timespec");
+    std::optional<QualType> StructTimespecTy = TF.lookupTy("timespec");
     std::optional<QualType> StructTimespecPtrTy =
-        getPointerTy(StructTimespecTy);
+        TF.getPointerTy(StructTimespecTy);
     std::optional<QualType> ConstStructTimespecPtrTy =
-        getPointerTy(getConstTy(StructTimespecTy));
+        TF.getPointerTy(TF.getConstTy(StructTimespecTy));
 
     // int futimens(int fd, const struct timespec times[2]);
     addToFunctionSummaryMap(
@@ -3494,9 +3336,9 @@ void StdLibraryFunctionsChecker::initFunctionSummaries(
             .Case(ReturnsMinusOne, ErrnoNEZeroIrrelevant, GenericFailureMsg)
             .ArgConstraint(NotNull(ArgNo(1))));
 
-    std::optional<QualType> StructTimevalTy = lookupTy("timeval");
+    std::optional<QualType> StructTimevalTy = TF.lookupTy("timeval");
     std::optional<QualType> ConstStructTimevalPtrTy =
-        getPointerTy(getConstTy(StructTimevalTy));
+        TF.getPointerTy(TF.getConstTy(StructTimevalTy));
 
     // int utimes(const char *filename, const struct timeval times[2]);
     addToFunctionSummaryMap(
@@ -3518,20 +3360,20 @@ void StdLibraryFunctionsChecker::initFunctionSummaries(
             .Case(ReturnsMinusOne, ErrnoNEZeroIrrelevant, GenericFailureMsg)
             .ArgConstraint(NotNull(ArgNo(0))));
 
-    std::optional<QualType> Time_tTy = lookupTy("time_t");
+    std::optional<QualType> Time_tTy = TF.lookupTy("time_t");
     std::optional<QualType> ConstTime_tPtrTy =
-        getPointerTy(getConstTy(Time_tTy));
+        TF.getPointerTy(TF.getConstTy(Time_tTy));
     std::optional<QualType> ConstTime_tPtrRestrictTy =
-        getRestrictTy(ConstTime_tPtrTy);
+        TF.getRestrictTy(ConstTime_tPtrTy);
 
-    std::optional<QualType> StructTmTy = lookupTy("tm");
-    std::optional<QualType> StructTmPtrTy = getPointerTy(StructTmTy);
+    std::optional<QualType> StructTmTy = TF.lookupTy("tm");
+    std::optional<QualType> StructTmPtrTy = TF.getPointerTy(StructTmTy);
     std::optional<QualType> StructTmPtrRestrictTy =
-        getRestrictTy(StructTmPtrTy);
+        TF.getRestrictTy(StructTmPtrTy);
     std::optional<QualType> ConstStructTmPtrTy =
-        getPointerTy(getConstTy(StructTmTy));
+        TF.getPointerTy(TF.getConstTy(StructTmTy));
     std::optional<QualType> ConstStructTmPtrRestrictTy =
-        getRestrictTy(ConstStructTmPtrTy);
+        TF.getRestrictTy(ConstStructTmPtrTy);
 
     // struct tm * localtime(const time_t *tp);
     addToFunctionSummaryMap(
@@ -3586,7 +3428,7 @@ void StdLibraryFunctionsChecker::initFunctionSummaries(
         "gmtime", Signature(ArgTypes{ConstTime_tPtrTy}, RetType{StructTmPtrTy}),
         Summary(NoEvalCall).ArgConstraint(NotNull(ArgNo(0))));
 
-    std::optional<QualType> Clockid_tTy = lookupTy("clockid_t");
+    std::optional<QualType> Clockid_tTy = TF.lookupTy("clockid_t");
 
     // int clock_gettime(clockid_t clock_id, struct timespec *tp);
     addToFunctionSummaryMap(
@@ -3597,9 +3439,9 @@ void StdLibraryFunctionsChecker::initFunctionSummaries(
             .Case(ReturnsMinusOne, ErrnoNEZeroIrrelevant, GenericFailureMsg)
             .ArgConstraint(NotNull(ArgNo(1))));
 
-    std::optional<QualType> StructItimervalTy = lookupTy("itimerval");
+    std::optional<QualType> StructItimervalTy = TF.lookupTy("itimerval");
     std::optional<QualType> StructItimervalPtrTy =
-        getPointerTy(StructItimervalTy);
+        TF.getPointerTy(StructItimervalTy);
 
     // int getitimer(int which, struct itimerval *curr_value);
     addToFunctionSummaryMap(
@@ -3610,33 +3452,33 @@ void StdLibraryFunctionsChecker::initFunctionSummaries(
             .Case(ReturnsMinusOne, ErrnoNEZeroIrrelevant, GenericFailureMsg)
             .ArgConstraint(NotNull(ArgNo(1))));
 
-    std::optional<QualType> Pthread_cond_tTy = lookupTy("pthread_cond_t");
+    std::optional<QualType> Pthread_cond_tTy = TF.lookupTy("pthread_cond_t");
     std::optional<QualType> Pthread_cond_tPtrTy =
-        getPointerTy(Pthread_cond_tTy);
-    std::optional<QualType> Pthread_tTy = lookupTy("pthread_t");
-    std::optional<QualType> Pthread_tPtrTy = getPointerTy(Pthread_tTy);
+        TF.getPointerTy(Pthread_cond_tTy);
+    std::optional<QualType> Pthread_tTy = TF.lookupTy("pthread_t");
+    std::optional<QualType> Pthread_tPtrTy = TF.getPointerTy(Pthread_tTy);
     std::optional<QualType> Pthread_tPtrRestrictTy =
-        getRestrictTy(Pthread_tPtrTy);
-    std::optional<QualType> Pthread_mutex_tTy = lookupTy("pthread_mutex_t");
+        TF.getRestrictTy(Pthread_tPtrTy);
+    std::optional<QualType> Pthread_mutex_tTy = TF.lookupTy("pthread_mutex_t");
     std::optional<QualType> Pthread_mutex_tPtrTy =
-        getPointerTy(Pthread_mutex_tTy);
+        TF.getPointerTy(Pthread_mutex_tTy);
     std::optional<QualType> Pthread_mutex_tPtrRestrictTy =
-        getRestrictTy(Pthread_mutex_tPtrTy);
-    std::optional<QualType> Pthread_attr_tTy = lookupTy("pthread_attr_t");
+        TF.getRestrictTy(Pthread_mutex_tPtrTy);
+    std::optional<QualType> Pthread_attr_tTy = TF.lookupTy("pthread_attr_t");
     std::optional<QualType> Pthread_attr_tPtrTy =
-        getPointerTy(Pthread_attr_tTy);
+        TF.getPointerTy(Pthread_attr_tTy);
     std::optional<QualType> ConstPthread_attr_tPtrTy =
-        getPointerTy(getConstTy(Pthread_attr_tTy));
+        TF.getPointerTy(TF.getConstTy(Pthread_attr_tTy));
     std::optional<QualType> ConstPthread_attr_tPtrRestrictTy =
-        getRestrictTy(ConstPthread_attr_tPtrTy);
+        TF.getRestrictTy(ConstPthread_attr_tPtrTy);
     std::optional<QualType> Pthread_mutexattr_tTy =
-        lookupTy("pthread_mutexattr_t");
+        TF.lookupTy("pthread_mutexattr_t");
     std::optional<QualType> ConstPthread_mutexattr_tPtrTy =
-        getPointerTy(getConstTy(Pthread_mutexattr_tTy));
+        TF.getPointerTy(TF.getConstTy(Pthread_mutexattr_tTy));
     std::optional<QualType> ConstPthread_mutexattr_tPtrRestrictTy =
-        getRestrictTy(ConstPthread_mutexattr_tPtrTy);
+        TF.getRestrictTy(ConstPthread_mutexattr_tPtrTy);
 
-    QualType PthreadStartRoutineTy = getPointerTy(
+    QualType PthreadStartRoutineTy = TF.getPointerTy(
         ACtx.getFunctionType(/*ResultTy=*/VoidPtrTy, /*Args=*/VoidPtrTy,
                              FunctionProtoType::ExtProtoInfo()));
 

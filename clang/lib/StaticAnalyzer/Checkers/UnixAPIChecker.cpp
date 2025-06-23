@@ -11,6 +11,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "FunctionSignature.h"
 #include "clang/Basic/TargetInfo.h"
 #include "clang/StaticAnalyzer/Checkers/BuiltinCheckerRegistration.h"
 #include "clang/StaticAnalyzer/Core/BugReporter/BugType.h"
@@ -61,6 +62,10 @@ class UnixAPIMisuseChecker : public Checker<check::PreCall> {
                                categories::UnixAPI};
   const BugType BT_ArgumentNull{this, "NULL pointer", categories::UnixAPI};
   const std::optional<int> Val_O_CREAT;
+  
+  // Signature matcher for getline/getdelim functions
+  mutable SignatureMatcher FunctionSignatureMatcher;
+  mutable bool SignaturesInitialized = false;
 
   ProgramStateRef
   EnsurePtrNotNull(SVal PtrVal, const Expr *PtrExpr, CheckerContext &C,
@@ -75,6 +80,8 @@ class UnixAPIMisuseChecker : public Checker<check::PreCall> {
 public:
   UnixAPIMisuseChecker(const ASTContext &Ctx, const Preprocessor &PP)
       : Val_O_CREAT(getCreateFlagValue(Ctx, PP)) {}
+  
+  void initSignatures(const ASTContext &ACtx) const;
 
   void checkASTDecl(const TranslationUnitDecl *TU, AnalysisManager &Mgr,
                     BugReporter &BR) const;
@@ -91,6 +98,10 @@ public:
 
   void ReportOpenBug(CheckerContext &C, ProgramStateRef State, const char *Msg,
                      SourceRange SR) const;
+                     
+private:
+  bool IsGetDelim(const CallEvent &Call, const FunctionDecl *FD,
+                  CheckerContext &C) const;
 };
 
 class UnixAPIPortabilityChecker : public Checker< check::PreStmt<CallExpr> > {
@@ -147,6 +158,42 @@ ProgramStateRef UnixAPIMisuseChecker::EnsurePtrNotNull(
   return PtrNotNull;
 }
 
+
+void UnixAPIMisuseChecker::initSignatures(const ASTContext &ACtx) const {
+  if (SignaturesInitialized)
+    return;
+  SignaturesInitialized = true;
+  
+  TypeFactory TF(ACtx);
+  
+  // ssize_t getline(char **restrict lineptr, size_t *restrict n, FILE *restrict stream);
+  // ssize_t getdelim(char **restrict lineptr, size_t *restrict n, int delimiter, FILE *restrict stream);
+  
+  std::optional<QualType> Ssize_tTy = TF.lookupTy("ssize_t");
+  std::optional<QualType> FileTy = TF.lookupTy("FILE");
+  std::optional<QualType> FilePtrRestrictTy = TF.getRestrictTy(TF.getPointerTy(FileTy));
+  QualType CharPtrPtrRestrictTy = TF.getRestrictTy(TF.getPointerTy(TF.getCharPtrTy()));
+  QualType SizePtrRestrictTy = TF.getRestrictTy(TF.getPointerTy(TF.getSizeTy()));
+  
+  Signature GetlineSign(
+      Signature::ArgTypes{CharPtrPtrRestrictTy, SizePtrRestrictTy, FilePtrRestrictTy},
+      Ssize_tTy);
+  FunctionSignatureMatcher.addSignature("getline", GetlineSign);
+  
+  Signature GetdelimSign(
+      Signature::ArgTypes{CharPtrPtrRestrictTy, SizePtrRestrictTy, TF.getIntTy(), FilePtrRestrictTy},
+      Ssize_tTy);
+  FunctionSignatureMatcher.addSignature("getdelim", GetdelimSign);
+}
+
+bool UnixAPIMisuseChecker::IsGetDelim(const CallEvent &Call, const FunctionDecl *FD,
+                                      CheckerContext &C) const {
+  initSignatures(C.getASTContext());
+
+  return FunctionSignatureMatcher.matches(FD, "getdelim") ||
+         FunctionSignatureMatcher.matches(FD, "getline");
+}
+
 //===----------------------------------------------------------------------===//
 // "open" (man 2 open)
 //===----------------------------------------------------------------------===/
@@ -176,7 +223,7 @@ void UnixAPIMisuseChecker::checkPreCall(const CallEvent &Call,
   else if (FName == "pthread_once")
     CheckPthreadOnce(C, Call);
 
-  else if (is_contained({"getdelim", "getline"}, FName))
+  else if (IsGetDelim(Call, FD, C))
     CheckGetDelim(C, Call);
 }
 void UnixAPIMisuseChecker::ReportOpenBug(CheckerContext &C,

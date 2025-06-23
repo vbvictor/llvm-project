@@ -45,6 +45,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "AllocationState.h"
+#include "FunctionSignature.h"
 #include "InterCheckerAPI.h"
 #include "NoOwnershipChangeVisitor.h"
 #include "clang/AST/Attr.h"
@@ -412,6 +413,9 @@ private:
   mutable std::unique_ptr<BugType> BT_OffsetFree[CK_NumCheckKinds];
   mutable std::unique_ptr<BugType> BT_UseZerroAllocated[CK_NumCheckKinds];
   mutable std::unique_ptr<BugType> BT_TaintedAlloc;
+  
+  mutable SignatureMatcher FunctionSignatureMatcher;
+  mutable bool SignaturesInitialized = false;
 
 #define CHECK_FN(NAME)                                                         \
   void NAME(ProgramStateRef State, const CallEvent &Call, CheckerContext &C)   \
@@ -455,6 +459,9 @@ private:
       {{CDM::CLibrary, {"getline"}, 3}, &MallocChecker::checkGetdelim},
       {{CDM::CLibrary, {"getdelim"}, 4}, &MallocChecker::checkGetdelim},
   };
+  
+  void initSignatures(CheckerContext &C) const;
+  bool IsGetDelim(const CallEvent &Call, CheckerContext &C) const;
 
   const CallDescriptionMap<CheckFn> FreeingMemFnMap{
       {{CDM::CLibrary, {"free"}, 1}, &MallocChecker::checkFree},
@@ -1482,11 +1489,51 @@ static bool isFromStdNamespace(const CallEvent &Call) {
   return FD->isInStdNamespace();
 }
 
+
+void MallocChecker::initSignatures(CheckerContext &C) const {
+  if (SignaturesInitialized)
+    return;
+  SignaturesInitialized = true;
+  
+  const ASTContext &ACtx = C.getASTContext();
+  TypeFactory TF(ACtx);
+  
+  // Create signatures for getline and getdelim
+  // ssize_t getline(char **restrict lineptr, size_t *restrict n, FILE *restrict stream);
+  // ssize_t getdelim(char **restrict lineptr, size_t *restrict n, int delimiter, FILE *restrict stream);
+  
+  std::optional<QualType> Ssize_tTy = TF.lookupTy("ssize_t");
+  std::optional<QualType> FileTy = TF.lookupTy("FILE");
+  std::optional<QualType> FilePtrRestrictTy = TF.getRestrictTy(TF.getPointerTy(FileTy));
+  QualType CharPtrPtrRestrictTy = TF.getRestrictTy(TF.getPointerTy(TF.getCharPtrTy()));
+  QualType SizePtrRestrictTy = TF.getRestrictTy(TF.getPointerTy(TF.getSizeTy()));
+  
+  Signature GetlineSign(
+      Signature::ArgTypes{CharPtrPtrRestrictTy, SizePtrRestrictTy, FilePtrRestrictTy},
+      Ssize_tTy);
+  FunctionSignatureMatcher.addSignature("getline", GetlineSign);
+  
+  Signature GetdelimSign(
+      Signature::ArgTypes{CharPtrPtrRestrictTy, SizePtrRestrictTy, TF.getIntTy(), FilePtrRestrictTy},
+      Ssize_tTy);
+  FunctionSignatureMatcher.addSignature("getdelim", GetdelimSign);
+}
+
+bool MallocChecker::IsGetDelim(const CallEvent &Call, CheckerContext &C) const {
+  const FunctionDecl *FD = dyn_cast_if_present<FunctionDecl>(Call.getDecl());
+  if (!FD || FD->getKind() != Decl::Function)
+    return false;
+
+  initSignatures(C);
+  return FunctionSignatureMatcher.matches(FD, "getdelim") || 
+         FunctionSignatureMatcher.matches(FD, "getline");
+}
+
 void MallocChecker::preGetdelim(ProgramStateRef State, const CallEvent &Call,
                                 CheckerContext &C) const {
   // Discard calls to the C++ standard library function std::getline(), which
   // is completely unrelated to the POSIX getline() that we're checking.
-  if (isFromStdNamespace(Call))
+  if (isFromStdNamespace(Call) || !IsGetDelim(Call, C))
     return;
 
   const auto LinePtr = getPointeeVal(Call.getArgSVal(0), State);
@@ -1509,7 +1556,7 @@ void MallocChecker::checkGetdelim(ProgramStateRef State, const CallEvent &Call,
                                   CheckerContext &C) const {
   // Discard calls to the C++ standard library function std::getline(), which
   // is completely unrelated to the POSIX getline() that we're checking.
-  if (isFromStdNamespace(Call))
+  if (isFromStdNamespace(Call) || !IsGetDelim(Call, C))
     return;
 
   // Handle the post-conditions of getline and getdelim:
