@@ -48,6 +48,7 @@
 #include "UseStdFormatCheck.h"
 #include "UseStdNumbersCheck.h"
 #include "UseStdPrintCheck.h"
+#include "UseToUnderlyingCheck.h"
 #include "UseTrailingReturnTypeCheck.h"
 #include "UseTransparentFunctorsCheck.h"
 #include "UseUncaughtExceptionsCheck.h"
@@ -121,6 +122,8 @@ public:
     CheckFactories.registerCheck<UseNoexceptCheck>("modernize-use-noexcept");
     CheckFactories.registerCheck<UseNullptrCheck>("modernize-use-nullptr");
     CheckFactories.registerCheck<UseOverrideCheck>("modernize-use-override");
+    CheckFactories.registerCheck<UseToUnderlyingCheck>(
+        "modernize-use-to-underlying");
     CheckFactories.registerCheck<UseTrailingReturnTypeCheck>(
         "modernize-use-trailing-return-type");
     CheckFactories.registerCheck<UseTransparentFunctorsCheck>(

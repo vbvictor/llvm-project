@@ -124,6 +124,13 @@ New checks
   Checks for uses of MLIR's old/to be deprecated ``OpBuilder::create<T>`` form
   and suggests using ``T::create`` instead.
 
+- New :doc:`modernize-use-to-underlying
+  <clang-tidy/checks/modernize/use-to-underlying>` check.
+
+  Finds and replaces ``static_cast`` of enum values to their underlying type
+  with ``std::to_underlying`` (C++23) or suggests using ``std::underlying_type_t``
+  (C++11-C++20). Supports custom ``to_underlying`` functions for pre-C++23 code.
+
 New check aliases
 ^^^^^^^^^^^^^^^^^
 
