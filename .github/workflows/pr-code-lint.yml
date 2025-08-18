@@ -1,0 +1,120 @@
+name: "Code lint"
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    branches:
+      - main
+      - 'users/**'
+      - add-clang-tidy-ci
+    paths:
+      - 'clang-tools-extra/clang-tidy/**'
+      - '.github/workflows/clang-tidy-self-check.yml'
+
+jobs:
+  code_linter:
+    # if: github.repository_owner == 'llvm'
+    runs-on: ubuntu-24.04
+    container:
+      image: 'ghcr.io/llvm/ci-ubuntu-24.04:latest'
+    timeout-minutes: 60
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - name: Fetch LLVM sources
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+        with:
+          fetch-depth: 2
+      
+      - name: Get changed files
+        id: changed-files
+        uses: step-security/changed-files@3dbe17c78367e7d60f00d78ae6781a35be47b4a1 # v45.0.1
+        with:
+          separator: ","
+          skip_initial_fetch: true
+          base_sha: 'HEAD~1'
+          sha: 'HEAD'
+      
+      - name: Listed files
+        env:
+          CHANGED_FILES: ${{ steps.changed-files.outputs.all_changed_files }}
+        run: |
+          echo "Changed files:"
+          echo "$CHANGED_FILES"
+      
+      - name: Fetch code linting utils
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ github.head_ref }} # FIXME: github.base_ref
+          sparse-checkout: |
+            llvm/utils/git/code-lint-helper.py
+            clang-tools-extra/clang-tidy/tool/clang-tidy-diff.py
+          sparse-checkout-cone-mode: false
+          path: code-lint-tools
+      
+      # FIXME: add setup of sccache
+
+      - name: Setup Python env
+        uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: 'code-format-tools/llvm/utils/git/requirements_linting.txt'
+      
+      - name: Install python dependencies
+        run: pip install -r code-format-tools/llvm/utils/git/requirements_linting.txt
+      
+      - name: Install clang-tidy
+        uses: aminya/setup-cpp@17c11551771948abc5752bbf3183482567c7caf0 # v1.1.1
+        with:
+          clang-tidy: 20.1.8
+      
+      # FIXME: create special mapping for 'gen' targets, for now build predefined set
+      - name: Configure and Build
+        run: |
+          source <(git diff --name-only HEAD~1..HEAD | python3 .ci/compute_projects.py)
+
+          if [[ "${projects_to_build}" == "" ]]; then
+            echo "No projects to build"
+            exit 0
+          fi
+
+          echo "Building projects: ${projects_to_build}"
+          echo "Running project checks targets: ${project_check_targets}"
+
+          cmake -G Ninja \
+                -B build \
+                -S llvm \
+                -DLLVM_ENABLE_ASSERTIONS=OFF \
+                -DLLVM_ENABLE_PROJECTS="${projects_to_build}" \
+                -DCMAKE_CXX_COMPILER=clang++ \
+                -DCMAKE_C_COMPILER=clang \
+                -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+                -DLLVM_INCLUDE_TESTS=OFF \
+                -DCLANG_INCLUDE_TESTS=OFF \
+                -DCMAKE_BUILD_TYPE=Release
+          
+          ninja -C build clang-tablegen-targets intrinsics_gen genconfusable
+
+      - name: Run code linter
+        env:
+          CHANGED_FILES: ${{ steps.changed-files.outputs.all_changed_files }}
+        run: |
+          echo "[]" > comments &&
+          python ./code-lint-tools/llvm/utils/git/code-lint-helper.py \
+            --write-comment-to-file \
+            --start-rev HEAD~1 \
+            --end-rev HEAD \
+            --changed-files "$CHANGED_FILES"
+      
+      - name: Upload results
+        uses: actions/upload-artifact@26f96dfa697d77e81fd5907df203aa23a56210a8 #v4.3.0
+        if: always()
+        with:
+          name: workflow-args
+          path: |
+            comments
