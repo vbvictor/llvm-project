@@ -406,6 +406,12 @@ Changes in existing checks
   declarations and macros in system headers. The documentation is also improved
   to differentiate the general options from the specific ones.
 
+- Improved :doc:`readability-identifier-naming
+  <clang-tidy/checks/readability/identifier-naming>` check by adding
+  ``AllowLeadingUnderscore`` and ``AllowTrailingUnderscore`` options for all
+  identifier types. These options allow identifiers to have leading or trailing
+  underscores even when the naming convention would otherwise prohibit them.
+
 - Improved :doc:`readability-implicit-bool-conversion
   <clang-tidy/checks/readability/implicit-bool-conversion>` check by correctly
   adding parentheses when the inner expression are implicitly converted

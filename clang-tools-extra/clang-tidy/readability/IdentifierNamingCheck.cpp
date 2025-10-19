@@ -234,9 +234,12 @@ static StringRef const HungarianNotationUserDefinedTypes[] = {
 
 IdentifierNamingCheck::NamingStyle::NamingStyle(
     std::optional<IdentifierNamingCheck::CaseType> Case, StringRef Prefix,
-    StringRef Suffix, StringRef IgnoredRegexpStr, HungarianPrefixType HPType)
+    StringRef Suffix, StringRef IgnoredRegexpStr, HungarianPrefixType HPType,
+    bool AllowLeadingUnderscore, bool AllowTrailingUnderscore)
     : Case(Case), Prefix(Prefix), Suffix(Suffix),
-      IgnoredRegexpStr(IgnoredRegexpStr), HPType(HPType) {
+      IgnoredRegexpStr(IgnoredRegexpStr), HPType(HPType),
+      AllowLeadingUnderscore(AllowLeadingUnderscore),
+      AllowTrailingUnderscore(AllowTrailingUnderscore) {
   if (!IgnoredRegexpStr.empty()) {
     IgnoredRegexp =
         llvm::Regex(llvm::SmallString<128>({"^", IgnoredRegexpStr, "$"}));
@@ -279,10 +282,18 @@ IdentifierNamingCheck::FileStyle IdentifierNamingCheck::getFileStyleFromOptions(
     std::optional<CaseType> CaseOptional =
         Options.get<IdentifierNamingCheck::CaseType>(StyleString);
 
-    if (CaseOptional || Prefix || Postfix || IgnoredRegexpStr || HPTOpt)
+    StyleString.assign({StyleNames[I], "AllowLeadingUnderscore"});
+    bool AllowLeadingUnderscore = Options.get(StyleString, false);
+
+    StyleString.assign({StyleNames[I], "AllowTrailingUnderscore"});
+    bool AllowTrailingUnderscore = Options.get(StyleString, false);
+
+    if (CaseOptional || Prefix || Postfix || IgnoredRegexpStr || HPTOpt ||
+        AllowLeadingUnderscore || AllowTrailingUnderscore)
       Styles[I].emplace(std::move(CaseOptional), Prefix.value_or(""),
                         Postfix.value_or(""), IgnoredRegexpStr.value_or(""),
-                        HPTOpt.value_or(IdentifierNamingCheck::HPT_Off));
+                        HPTOpt.value_or(IdentifierNamingCheck::HPT_Off),
+                        AllowLeadingUnderscore, AllowTrailingUnderscore);
   }
   bool IgnoreMainLike = Options.get("IgnoreMainLikeFunctions", false);
   bool CheckAnonFieldInParent = Options.get("CheckAnonFieldInParent", false);
@@ -853,6 +864,12 @@ void IdentifierNamingCheck::storeOptions(ClangTidyOptions::OptionMap &Opts) {
       StyleString.pop_back_n(2);
       Options.store(Opts, StyleString, *Styles[I]->Case);
     }
+
+    StyleString.assign({StyleNames[I], "AllowLeadingUnderscore"});
+    Options.store(Opts, StyleString, Styles[I]->AllowLeadingUnderscore);
+
+    StyleString.assign({StyleNames[I], "AllowTrailingUnderscore"});
+    Options.store(Opts, StyleString, Styles[I]->AllowTrailingUnderscore);
   }
   Options.store(Opts, "GetConfigPerFile", GetConfigPerFile);
   Options.store(Opts, "IgnoreFailedSplit", IgnoreFailedSplit);
@@ -894,10 +911,17 @@ bool IdentifierNamingCheck::matchesStyle(
     }
   }
 
-  // Ensure the name doesn't have any extra underscores beyond those specified
-  // in the prefix and suffix.
-  if (Name.starts_with("_") || Name.ends_with("_"))
-    return false;
+  // Check and remove leading/trailing underscores if allowed
+  if (Name.starts_with("_")) {
+    if (!Style.AllowLeadingUnderscore)
+      return false;
+    Name = Name.drop_front(1);
+  }
+  if (Name.ends_with("_")) {
+    if (!Style.AllowTrailingUnderscore)
+      return false;
+    Name = Name.drop_back(1);
+  }
 
   if (Style.Case && !Matchers[static_cast<size_t>(*Style.Case)].match(Name))
     return false;

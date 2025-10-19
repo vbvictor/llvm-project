@@ -57,58 +57,58 @@ The available options are summarized below:
 
 **Specific options**
 
- - :option:`AbstractClassCase`, :option:`AbstractClassPrefix`, :option:`AbstractClassSuffix`, :option:`AbstractClassIgnoredRegexp`, :option:`AbstractClassHungarianPrefix`
- - :option:`ClassCase`, :option:`ClassPrefix`, :option:`ClassSuffix`, :option:`ClassIgnoredRegexp`, :option:`ClassHungarianPrefix`
- - :option:`ClassConstantCase`, :option:`ClassConstantPrefix`, :option:`ClassConstantSuffix`, :option:`ClassConstantIgnoredRegexp`, :option:`ClassConstantHungarianPrefix`
- - :option:`ClassMemberCase`, :option:`ClassMemberPrefix`, :option:`ClassMemberSuffix`, :option:`ClassMemberIgnoredRegexp`, :option:`ClassMemberHungarianPrefix`
- - :option:`ClassMethodCase`, :option:`ClassMethodPrefix`, :option:`ClassMethodSuffix`, :option:`ClassMethodIgnoredRegexp`
- - :option:`ConceptCase`, :option:`ConceptPrefix`, :option:`ConceptSuffix`, :option:`ConceptIgnoredRegexp`
- - :option:`ConstantCase`, :option:`ConstantPrefix`, :option:`ConstantSuffix`, :option:`ConstantIgnoredRegexp`, :option:`ConstantHungarianPrefix`
- - :option:`ConstantMemberCase`, :option:`ConstantMemberPrefix`, :option:`ConstantMemberSuffix`, :option:`ConstantMemberIgnoredRegexp`, :option:`ConstantMemberHungarianPrefix`
- - :option:`ConstantParameterCase`, :option:`ConstantParameterPrefix`, :option:`ConstantParameterSuffix`, :option:`ConstantParameterIgnoredRegexp`, :option:`ConstantParameterHungarianPrefix`
- - :option:`ConstantPointerParameterCase`, :option:`ConstantPointerParameterPrefix`, :option:`ConstantPointerParameterSuffix`, :option:`ConstantPointerParameterIgnoredRegexp`, :option:`ConstantPointerParameterHungarianPrefix`
- - :option:`ConstexprFunctionCase`, :option:`ConstexprFunctionPrefix`, :option:`ConstexprFunctionSuffix`, :option:`ConstexprFunctionIgnoredRegexp`
- - :option:`ConstexprMethodCase`, :option:`ConstexprMethodPrefix`, :option:`ConstexprMethodSuffix`, :option:`ConstexprMethodIgnoredRegexp`
- - :option:`ConstexprVariableCase`, :option:`ConstexprVariablePrefix`, :option:`ConstexprVariableSuffix`, :option:`ConstexprVariableIgnoredRegexp`, :option:`ConstexprVariableHungarianPrefix`
- - :option:`EnumCase`, :option:`EnumPrefix`, :option:`EnumSuffix`, :option:`EnumIgnoredRegexp`
- - :option:`EnumConstantCase`, :option:`EnumConstantPrefix`, :option:`EnumConstantSuffix`, :option:`EnumConstantIgnoredRegexp`, :option:`EnumConstantHungarianPrefix`
- - :option:`FunctionCase`, :option:`FunctionPrefix`, :option:`FunctionSuffix`, :option:`FunctionIgnoredRegexp`
- - :option:`GlobalConstantCase`, :option:`GlobalConstantPrefix`, :option:`GlobalConstantSuffix`, :option:`GlobalConstantIgnoredRegexp`, :option:`GlobalConstantHungarianPrefix`
- - :option:`GlobalConstantPointerCase`, :option:`GlobalConstantPointerPrefix`, :option:`GlobalConstantPointerSuffix`, :option:`GlobalConstantPointerIgnoredRegexp`, :option:`GlobalConstantPointerHungarianPrefix`
- - :option:`GlobalFunctionCase`, :option:`GlobalFunctionPrefix`, :option:`GlobalFunctionSuffix`, :option:`GlobalFunctionIgnoredRegexp`
- - :option:`GlobalPointerCase`, :option:`GlobalPointerPrefix`, :option:`GlobalPointerSuffix`, :option:`GlobalPointerIgnoredRegexp`, :option:`GlobalPointerHungarianPrefix`
- - :option:`GlobalVariableCase`, :option:`GlobalVariablePrefix`, :option:`GlobalVariableSuffix`, :option:`GlobalVariableIgnoredRegexp`, :option:`GlobalVariableHungarianPrefix`
- - :option:`InlineNamespaceCase`, :option:`InlineNamespacePrefix`, :option:`InlineNamespaceSuffix`, :option:`InlineNamespaceIgnoredRegexp`
- - :option:`LocalConstantCase`, :option:`LocalConstantPrefix`, :option:`LocalConstantSuffix`, :option:`LocalConstantIgnoredRegexp`, :option:`LocalConstantHungarianPrefix`
- - :option:`LocalConstantPointerCase`, :option:`LocalConstantPointerPrefix`, :option:`LocalConstantPointerSuffix`, :option:`LocalConstantPointerIgnoredRegexp`, :option:`LocalConstantPointerHungarianPrefix`
- - :option:`LocalPointerCase`, :option:`LocalPointerPrefix`, :option:`LocalPointerSuffix`, :option:`LocalPointerIgnoredRegexp`, :option:`LocalPointerHungarianPrefix`
- - :option:`LocalVariableCase`, :option:`LocalVariablePrefix`, :option:`LocalVariableSuffix`, :option:`LocalVariableIgnoredRegexp`, :option:`LocalVariableHungarianPrefix`
- - :option:`MacroDefinitionCase`, :option:`MacroDefinitionPrefix`, :option:`MacroDefinitionSuffix`, :option:`MacroDefinitionIgnoredRegexp`
- - :option:`MemberCase`, :option:`MemberPrefix`, :option:`MemberSuffix`, :option:`MemberIgnoredRegexp`, :option:`MemberHungarianPrefix`
- - :option:`MethodCase`, :option:`MethodPrefix`, :option:`MethodSuffix`, :option:`MethodIgnoredRegexp`
- - :option:`NamespaceCase`, :option:`NamespacePrefix`, :option:`NamespaceSuffix`, :option:`NamespaceIgnoredRegexp`
- - :option:`ParameterCase`, :option:`ParameterPrefix`, :option:`ParameterSuffix`, :option:`ParameterIgnoredRegexp`, :option:`ParameterHungarianPrefix`
- - :option:`ParameterPackCase`, :option:`ParameterPackPrefix`, :option:`ParameterPackSuffix`, :option:`ParameterPackIgnoredRegexp`
- - :option:`PointerParameterCase`, :option:`PointerParameterPrefix`, :option:`PointerParameterSuffix`, :option:`PointerParameterIgnoredRegexp`, :option:`PointerParameterHungarianPrefix`
- - :option:`PrivateMemberCase`, :option:`PrivateMemberPrefix`, :option:`PrivateMemberSuffix`, :option:`PrivateMemberIgnoredRegexp`, :option:`PrivateMemberHungarianPrefix`
- - :option:`PrivateMethodCase`, :option:`PrivateMethodPrefix`, :option:`PrivateMethodSuffix`, :option:`PrivateMethodIgnoredRegexp`
- - :option:`ProtectedMemberCase`, :option:`ProtectedMemberPrefix`, :option:`ProtectedMemberSuffix`, :option:`ProtectedMemberIgnoredRegexp`, :option:`ProtectedMemberHungarianPrefix`
- - :option:`ProtectedMethodCase`, :option:`ProtectedMethodPrefix`, :option:`ProtectedMethodSuffix`, :option:`ProtectedMethodIgnoredRegexp`
- - :option:`PublicMemberCase`, :option:`PublicMemberPrefix`, :option:`PublicMemberSuffix`, :option:`PublicMemberIgnoredRegexp`, :option:`PublicMemberHungarianPrefix`
- - :option:`PublicMethodCase`, :option:`PublicMethodPrefix`, :option:`PublicMethodSuffix`, :option:`PublicMethodIgnoredRegexp`
- - :option:`ScopedEnumConstantCase`, :option:`ScopedEnumConstantPrefix`, :option:`ScopedEnumConstantSuffix`, :option:`ScopedEnumConstantIgnoredRegexp`
- - :option:`StaticConstantCase`, :option:`StaticConstantPrefix`, :option:`StaticConstantSuffix`, :option:`StaticConstantIgnoredRegexp`, :option:`StaticConstantHungarianPrefix`
- - :option:`StaticVariableCase`, :option:`StaticVariablePrefix`, :option:`StaticVariableSuffix`, :option:`StaticVariableIgnoredRegexp`, :option:`StaticVariableHungarianPrefix`
- - :option:`StructCase`, :option:`StructPrefix`, :option:`StructSuffix`, :option:`StructIgnoredRegexp`
- - :option:`TemplateParameterCase`, :option:`TemplateParameterPrefix`, :option:`TemplateParameterSuffix`, :option:`TemplateParameterIgnoredRegexp`
- - :option:`TemplateTemplateParameterCase`, :option:`TemplateTemplateParameterPrefix`, :option:`TemplateTemplateParameterSuffix`, :option:`TemplateTemplateParameterIgnoredRegexp`
- - :option:`TypeAliasCase`, :option:`TypeAliasPrefix`, :option:`TypeAliasSuffix`, :option:`TypeAliasIgnoredRegexp`
- - :option:`TypedefCase`, :option:`TypedefPrefix`, :option:`TypedefSuffix`, :option:`TypedefIgnoredRegexp`
- - :option:`TypeTemplateParameterCase`, :option:`TypeTemplateParameterPrefix`, :option:`TypeTemplateParameterSuffix`, :option:`TypeTemplateParameterIgnoredRegexp`
- - :option:`UnionCase`, :option:`UnionPrefix`, :option:`UnionSuffix`, :option:`UnionIgnoredRegexp`
- - :option:`ValueTemplateParameterCase`, :option:`ValueTemplateParameterPrefix`, :option:`ValueTemplateParameterSuffix`, :option:`ValueTemplateParameterIgnoredRegexp`
- - :option:`VariableCase`, :option:`VariablePrefix`, :option:`VariableSuffix`, :option:`VariableIgnoredRegexp`, :option:`VariableHungarianPrefix`
- - :option:`VirtualMethodCase`, :option:`VirtualMethodPrefix`, :option:`VirtualMethodSuffix`, :option:`VirtualMethodIgnoredRegexp`
+ - :option:`AbstractClassCase`, :option:`AbstractClassPrefix`, :option:`AbstractClassSuffix`, :option:`AbstractClassIgnoredRegexp`, :option:`AbstractClassHungarianPrefix`, :option:`AbstractClassAllowLeadingUnderscore`, :option:`AbstractClassAllowTrailingUnderscore`
+ - :option:`ClassCase`, :option:`ClassPrefix`, :option:`ClassSuffix`, :option:`ClassIgnoredRegexp`, :option:`ClassHungarianPrefix`, :option:`ClassAllowLeadingUnderscore`, :option:`ClassAllowTrailingUnderscore`
+ - :option:`ClassConstantCase`, :option:`ClassConstantPrefix`, :option:`ClassConstantSuffix`, :option:`ClassConstantIgnoredRegexp`, :option:`ClassConstantHungarianPrefix`, :option:`ClassConstantAllowLeadingUnderscore`, :option:`ClassConstantAllowTrailingUnderscore`
+ - :option:`ClassMemberCase`, :option:`ClassMemberPrefix`, :option:`ClassMemberSuffix`, :option:`ClassMemberIgnoredRegexp`, :option:`ClassMemberHungarianPrefix`, :option:`ClassMemberAllowLeadingUnderscore`, :option:`ClassMemberAllowTrailingUnderscore`
+ - :option:`ClassMethodCase`, :option:`ClassMethodPrefix`, :option:`ClassMethodSuffix`, :option:`ClassMethodIgnoredRegexp`, :option:`ClassMethodAllowLeadingUnderscore`, :option:`ClassMethodAllowTrailingUnderscore`
+ - :option:`ConceptCase`, :option:`ConceptPrefix`, :option:`ConceptSuffix`, :option:`ConceptIgnoredRegexp`, :option:`ConceptAllowLeadingUnderscore`, :option:`ConceptAllowTrailingUnderscore`
+ - :option:`ConstantCase`, :option:`ConstantPrefix`, :option:`ConstantSuffix`, :option:`ConstantIgnoredRegexp`, :option:`ConstantHungarianPrefix`, :option:`ConstantAllowLeadingUnderscore`, :option:`ConstantAllowTrailingUnderscore`
+ - :option:`ConstantMemberCase`, :option:`ConstantMemberPrefix`, :option:`ConstantMemberSuffix`, :option:`ConstantMemberIgnoredRegexp`, :option:`ConstantMemberHungarianPrefix`, :option:`ConstantMemberAllowLeadingUnderscore`, :option:`ConstantMemberAllowTrailingUnderscore`
+ - :option:`ConstantParameterCase`, :option:`ConstantParameterPrefix`, :option:`ConstantParameterSuffix`, :option:`ConstantParameterIgnoredRegexp`, :option:`ConstantParameterHungarianPrefix`, :option:`ConstantParameterAllowLeadingUnderscore`, :option:`ConstantParameterAllowTrailingUnderscore`
+ - :option:`ConstantPointerParameterCase`, :option:`ConstantPointerParameterPrefix`, :option:`ConstantPointerParameterSuffix`, :option:`ConstantPointerParameterIgnoredRegexp`, :option:`ConstantPointerParameterHungarianPrefix`, :option:`ConstantPointerParameterAllowLeadingUnderscore`, :option:`ConstantPointerParameterAllowTrailingUnderscore`
+ - :option:`ConstexprFunctionCase`, :option:`ConstexprFunctionPrefix`, :option:`ConstexprFunctionSuffix`, :option:`ConstexprFunctionIgnoredRegexp`, :option:`ConstexprFunctionAllowLeadingUnderscore`, :option:`ConstexprFunctionAllowTrailingUnderscore`
+ - :option:`ConstexprMethodCase`, :option:`ConstexprMethodPrefix`, :option:`ConstexprMethodSuffix`, :option:`ConstexprMethodIgnoredRegexp`, :option:`ConstexprMethodAllowLeadingUnderscore`, :option:`ConstexprMethodAllowTrailingUnderscore`
+ - :option:`ConstexprVariableCase`, :option:`ConstexprVariablePrefix`, :option:`ConstexprVariableSuffix`, :option:`ConstexprVariableIgnoredRegexp`, :option:`ConstexprVariableHungarianPrefix`, :option:`ConstexprVariableAllowLeadingUnderscore`, :option:`ConstexprVariableAllowTrailingUnderscore`
+ - :option:`EnumCase`, :option:`EnumPrefix`, :option:`EnumSuffix`, :option:`EnumIgnoredRegexp`, :option:`EnumAllowLeadingUnderscore`, :option:`EnumAllowTrailingUnderscore`
+ - :option:`EnumConstantCase`, :option:`EnumConstantPrefix`, :option:`EnumConstantSuffix`, :option:`EnumConstantIgnoredRegexp`, :option:`EnumConstantHungarianPrefix`, :option:`EnumConstantAllowLeadingUnderscore`, :option:`EnumConstantAllowTrailingUnderscore`
+ - :option:`FunctionCase`, :option:`FunctionPrefix`, :option:`FunctionSuffix`, :option:`FunctionIgnoredRegexp`, :option:`FunctionAllowLeadingUnderscore`, :option:`FunctionAllowTrailingUnderscore`
+ - :option:`GlobalConstantCase`, :option:`GlobalConstantPrefix`, :option:`GlobalConstantSuffix`, :option:`GlobalConstantIgnoredRegexp`, :option:`GlobalConstantHungarianPrefix`, :option:`GlobalConstantAllowLeadingUnderscore`, :option:`GlobalConstantAllowTrailingUnderscore`
+ - :option:`GlobalConstantPointerCase`, :option:`GlobalConstantPointerPrefix`, :option:`GlobalConstantPointerSuffix`, :option:`GlobalConstantPointerIgnoredRegexp`, :option:`GlobalConstantPointerHungarianPrefix`, :option:`GlobalConstantPointerAllowLeadingUnderscore`, :option:`GlobalConstantPointerAllowTrailingUnderscore`
+ - :option:`GlobalFunctionCase`, :option:`GlobalFunctionPrefix`, :option:`GlobalFunctionSuffix`, :option:`GlobalFunctionIgnoredRegexp`, :option:`GlobalFunctionAllowLeadingUnderscore`, :option:`GlobalFunctionAllowTrailingUnderscore`
+ - :option:`GlobalPointerCase`, :option:`GlobalPointerPrefix`, :option:`GlobalPointerSuffix`, :option:`GlobalPointerIgnoredRegexp`, :option:`GlobalPointerHungarianPrefix`, :option:`GlobalPointerAllowLeadingUnderscore`, :option:`GlobalPointerAllowTrailingUnderscore`
+ - :option:`GlobalVariableCase`, :option:`GlobalVariablePrefix`, :option:`GlobalVariableSuffix`, :option:`GlobalVariableIgnoredRegexp`, :option:`GlobalVariableHungarianPrefix`, :option:`GlobalVariableAllowLeadingUnderscore`, :option:`GlobalVariableAllowTrailingUnderscore`
+ - :option:`InlineNamespaceCase`, :option:`InlineNamespacePrefix`, :option:`InlineNamespaceSuffix`, :option:`InlineNamespaceIgnoredRegexp`, :option:`InlineNamespaceAllowLeadingUnderscore`, :option:`InlineNamespaceAllowTrailingUnderscore`
+ - :option:`LocalConstantCase`, :option:`LocalConstantPrefix`, :option:`LocalConstantSuffix`, :option:`LocalConstantIgnoredRegexp`, :option:`LocalConstantHungarianPrefix`, :option:`LocalConstantAllowLeadingUnderscore`, :option:`LocalConstantAllowTrailingUnderscore`
+ - :option:`LocalConstantPointerCase`, :option:`LocalConstantPointerPrefix`, :option:`LocalConstantPointerSuffix`, :option:`LocalConstantPointerIgnoredRegexp`, :option:`LocalConstantPointerHungarianPrefix`, :option:`LocalConstantPointerAllowLeadingUnderscore`, :option:`LocalConstantPointerAllowTrailingUnderscore`
+ - :option:`LocalPointerCase`, :option:`LocalPointerPrefix`, :option:`LocalPointerSuffix`, :option:`LocalPointerIgnoredRegexp`, :option:`LocalPointerHungarianPrefix`, :option:`LocalPointerAllowLeadingUnderscore`, :option:`LocalPointerAllowTrailingUnderscore`
+ - :option:`LocalVariableCase`, :option:`LocalVariablePrefix`, :option:`LocalVariableSuffix`, :option:`LocalVariableIgnoredRegexp`, :option:`LocalVariableHungarianPrefix`, :option:`LocalVariableAllowLeadingUnderscore`, :option:`LocalVariableAllowTrailingUnderscore`
+ - :option:`MacroDefinitionCase`, :option:`MacroDefinitionPrefix`, :option:`MacroDefinitionSuffix`, :option:`MacroDefinitionIgnoredRegexp`, :option:`MacroDefinitionAllowLeadingUnderscore`, :option:`MacroDefinitionAllowTrailingUnderscore`
+ - :option:`MemberCase`, :option:`MemberPrefix`, :option:`MemberSuffix`, :option:`MemberIgnoredRegexp`, :option:`MemberHungarianPrefix`, :option:`MemberAllowLeadingUnderscore`, :option:`MemberAllowTrailingUnderscore`
+ - :option:`MethodCase`, :option:`MethodPrefix`, :option:`MethodSuffix`, :option:`MethodIgnoredRegexp`, :option:`MethodAllowLeadingUnderscore`, :option:`MethodAllowTrailingUnderscore`
+ - :option:`NamespaceCase`, :option:`NamespacePrefix`, :option:`NamespaceSuffix`, :option:`NamespaceIgnoredRegexp`, :option:`NamespaceAllowLeadingUnderscore`, :option:`NamespaceAllowTrailingUnderscore`
+ - :option:`ParameterCase`, :option:`ParameterPrefix`, :option:`ParameterSuffix`, :option:`ParameterIgnoredRegexp`, :option:`ParameterHungarianPrefix`, :option:`ParameterAllowLeadingUnderscore`, :option:`ParameterAllowTrailingUnderscore`
+ - :option:`ParameterPackCase`, :option:`ParameterPackPrefix`, :option:`ParameterPackSuffix`, :option:`ParameterPackIgnoredRegexp`, :option:`ParameterPackAllowLeadingUnderscore`, :option:`ParameterPackAllowTrailingUnderscore`
+ - :option:`PointerParameterCase`, :option:`PointerParameterPrefix`, :option:`PointerParameterSuffix`, :option:`PointerParameterIgnoredRegexp`, :option:`PointerParameterHungarianPrefix`, :option:`PointerParameterAllowLeadingUnderscore`, :option:`PointerParameterAllowTrailingUnderscore`
+ - :option:`PrivateMemberCase`, :option:`PrivateMemberPrefix`, :option:`PrivateMemberSuffix`, :option:`PrivateMemberIgnoredRegexp`, :option:`PrivateMemberHungarianPrefix`, :option:`PrivateMemberAllowLeadingUnderscore`, :option:`PrivateMemberAllowTrailingUnderscore`
+ - :option:`PrivateMethodCase`, :option:`PrivateMethodPrefix`, :option:`PrivateMethodSuffix`, :option:`PrivateMethodIgnoredRegexp`, :option:`PrivateMethodAllowLeadingUnderscore`, :option:`PrivateMethodAllowTrailingUnderscore`
+ - :option:`ProtectedMemberCase`, :option:`ProtectedMemberPrefix`, :option:`ProtectedMemberSuffix`, :option:`ProtectedMemberIgnoredRegexp`, :option:`ProtectedMemberHungarianPrefix`, :option:`ProtectedMemberAllowLeadingUnderscore`, :option:`ProtectedMemberAllowTrailingUnderscore`
+ - :option:`ProtectedMethodCase`, :option:`ProtectedMethodPrefix`, :option:`ProtectedMethodSuffix`, :option:`ProtectedMethodIgnoredRegexp`, :option:`ProtectedMethodAllowLeadingUnderscore`, :option:`ProtectedMethodAllowTrailingUnderscore`
+ - :option:`PublicMemberCase`, :option:`PublicMemberPrefix`, :option:`PublicMemberSuffix`, :option:`PublicMemberIgnoredRegexp`, :option:`PublicMemberHungarianPrefix`, :option:`PublicMemberAllowLeadingUnderscore`, :option:`PublicMemberAllowTrailingUnderscore`
+ - :option:`PublicMethodCase`, :option:`PublicMethodPrefix`, :option:`PublicMethodSuffix`, :option:`PublicMethodIgnoredRegexp`, :option:`PublicMethodAllowLeadingUnderscore`, :option:`PublicMethodAllowTrailingUnderscore`
+ - :option:`ScopedEnumConstantCase`, :option:`ScopedEnumConstantPrefix`, :option:`ScopedEnumConstantSuffix`, :option:`ScopedEnumConstantIgnoredRegexp`, :option:`ScopedEnumConstantAllowLeadingUnderscore`, :option:`ScopedEnumConstantAllowTrailingUnderscore`
+ - :option:`StaticConstantCase`, :option:`StaticConstantPrefix`, :option:`StaticConstantSuffix`, :option:`StaticConstantIgnoredRegexp`, :option:`StaticConstantHungarianPrefix`, :option:`StaticConstantAllowLeadingUnderscore`, :option:`StaticConstantAllowTrailingUnderscore`
+ - :option:`StaticVariableCase`, :option:`StaticVariablePrefix`, :option:`StaticVariableSuffix`, :option:`StaticVariableIgnoredRegexp`, :option:`StaticVariableHungarianPrefix`, :option:`StaticVariableAllowLeadingUnderscore`, :option:`StaticVariableAllowTrailingUnderscore`
+ - :option:`StructCase`, :option:`StructPrefix`, :option:`StructSuffix`, :option:`StructIgnoredRegexp`, :option:`StructAllowLeadingUnderscore`, :option:`StructAllowTrailingUnderscore`
+ - :option:`TemplateParameterCase`, :option:`TemplateParameterPrefix`, :option:`TemplateParameterSuffix`, :option:`TemplateParameterIgnoredRegexp`, :option:`TemplateParameterAllowLeadingUnderscore`, :option:`TemplateParameterAllowTrailingUnderscore`
+ - :option:`TemplateTemplateParameterCase`, :option:`TemplateTemplateParameterPrefix`, :option:`TemplateTemplateParameterSuffix`, :option:`TemplateTemplateParameterIgnoredRegexp`, :option:`TemplateTemplateParameterAllowLeadingUnderscore`, :option:`TemplateTemplateParameterAllowTrailingUnderscore`
+ - :option:`TypeAliasCase`, :option:`TypeAliasPrefix`, :option:`TypeAliasSuffix`, :option:`TypeAliasIgnoredRegexp`, :option:`TypeAliasAllowLeadingUnderscore`, :option:`TypeAliasAllowTrailingUnderscore`
+ - :option:`TypedefCase`, :option:`TypedefPrefix`, :option:`TypedefSuffix`, :option:`TypedefIgnoredRegexp`, :option:`TypedefAllowLeadingUnderscore`, :option:`TypedefAllowTrailingUnderscore`
+ - :option:`TypeTemplateParameterCase`, :option:`TypeTemplateParameterPrefix`, :option:`TypeTemplateParameterSuffix`, :option:`TypeTemplateParameterIgnoredRegexp`, :option:`TypeTemplateParameterAllowLeadingUnderscore`, :option:`TypeTemplateParameterAllowTrailingUnderscore`
+ - :option:`UnionCase`, :option:`UnionPrefix`, :option:`UnionSuffix`, :option:`UnionIgnoredRegexp`, :option:`UnionAllowLeadingUnderscore`, :option:`UnionAllowTrailingUnderscore`
+ - :option:`ValueTemplateParameterCase`, :option:`ValueTemplateParameterPrefix`, :option:`ValueTemplateParameterSuffix`, :option:`ValueTemplateParameterIgnoredRegexp`, :option:`ValueTemplateParameterAllowLeadingUnderscore`, :option:`ValueTemplateParameterAllowTrailingUnderscore`
+ - :option:`VariableCase`, :option:`VariablePrefix`, :option:`VariableSuffix`, :option:`VariableIgnoredRegexp`, :option:`VariableHungarianPrefix`, :option:`VariableAllowLeadingUnderscore`, :option:`VariableAllowTrailingUnderscore`
+ - :option:`VirtualMethodCase`, :option:`VirtualMethodPrefix`, :option:`VirtualMethodSuffix`, :option:`VirtualMethodIgnoredRegexp`, :option:`VirtualMethodAllowLeadingUnderscore`, :option:`VirtualMethodAllowTrailingUnderscore`
 
 
 Options description
@@ -141,6 +141,23 @@ A detailed description of each option is presented below:
     When enabled, the check ensures that the declared identifier will
     have a Hungarian notation prefix based on the declared type.
 
+.. option:: AbstractClassAllowLeadingUnderscore
+
+    When set to ``true``, the check will allow abstract class names to
+    have a leading underscore. Default is ``false``.
+
+.. option:: AbstractClassAllowTrailingUnderscore
+
+    When set to ``true``, the check will allow abstract class names to
+    have a trailing underscore. Default is ``false``.
+
+Note: The ``AllowLeadingUnderscore`` and ``AllowTrailingUnderscore``
+options are available for all identifier types (e.g.,
+``ClassAllowLeadingUnderscore``, ``VariableAllowTrailingUnderscore``,
+etc.). These options allow identifiers to have leading or trailing
+underscores even when the naming convention would otherwise prohibit
+them. By default, both options are ``false``.
+
 For example using values of:
 
    - AbstractClassCase of ``lower_case``
@@ -168,6 +185,41 @@ After:
     public:
       pre_abstract_class_post();
     };
+
+Example of using ``AllowLeadingUnderscore`` and
+``AllowTrailingUnderscore`` with values of:
+
+   - ClassCase of ``CamelCase``
+   - ClassAllowLeadingUnderscore of ``true``
+   - ClassAllowTrailingUnderscore of ``true``
+   - VariableCase of ``lower_case``
+   - VariableAllowLeadingUnderscore of ``true``
+
+Before:
+
+.. code-block:: c++
+
+    class _MyClass_ {};  // OK - both leading and trailing underscores
+                         // allowed
+    class MyClass {};    // OK - no underscores
+
+    void test() {
+      int _my_var = 0;   // OK - leading underscore allowed
+      int my_var_ = 0;   // ERROR - trailing underscore not allowed for
+                         // variables
+    }
+
+After:
+
+.. code-block:: c++
+
+    class _MyClass_ {};  // OK - no change needed
+    class MyClass {};    // OK - no change needed
+
+    void test() {
+      int _my_var = 0;   // OK - no change needed
+      int my_var = 0;    // Fixed - trailing underscore removed
+    }
 
 .. option:: AggressiveDependentMemberLookup
 

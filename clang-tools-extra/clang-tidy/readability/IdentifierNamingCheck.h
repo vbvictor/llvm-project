@@ -72,7 +72,8 @@ public:
 
     NamingStyle(std::optional<CaseType> Case, StringRef Prefix,
                 StringRef Suffix, StringRef IgnoredRegexpStr,
-                HungarianPrefixType HPType);
+                HungarianPrefixType HPType, bool AllowLeadingUnderscore,
+                bool AllowTrailingUnderscore);
     NamingStyle(const NamingStyle &O) = delete;
     NamingStyle &operator=(NamingStyle &&O) = default;
     NamingStyle(NamingStyle &&O) = default;
@@ -86,6 +87,8 @@ public:
     std::string IgnoredRegexpStr;
 
     HungarianPrefixType HPType;
+    bool AllowLeadingUnderscore = false;
+    bool AllowTrailingUnderscore = false;
   };
 
   struct HungarianNotation {
