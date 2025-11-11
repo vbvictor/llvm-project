@@ -146,12 +146,13 @@ public:
     DigestAnalyzerOptions();
 
     if (Opts.AnalyzerDisplayProgress || Opts.PrintStats ||
-        Opts.ShouldSerializeStats || !Opts.DumpEntryPointStatsToCSV.empty()) {
+        Opts.ShouldSerializeStats || !Opts.DumpEntryPointStatsToCSV.empty() ||
+        Opts.EnableProfilingWithoutPrinting) {
       AnalyzerTimers = std::make_unique<llvm::TimerGroup>(
           "analyzer", "Analyzer timers",
           /*PrintOnExit=*/
           (Opts.AnalyzerDisplayProgress || Opts.PrintStats ||
-           Opts.ShouldSerializeStats));
+           Opts.ShouldSerializeStats) && !Opts.EnableProfilingWithoutPrinting);
       SyntaxCheckTimer = std::make_unique<llvm::Timer>(
           "syntaxchecks", "Syntax-based analysis time", *AnalyzerTimers);
       ExprEngineTimer = std::make_unique<llvm::Timer>(
@@ -358,6 +359,25 @@ public:
 
   void AddCheckerRegistrationFn(std::function<void(CheckerRegistry&)> Fn) override {
     CheckerRegistrationFns.push_back(std::move(Fn));
+  }
+
+  llvm::StringMap<llvm::TimeRecord> getAnalyzerTimingData() const override {
+    llvm::StringMap<llvm::TimeRecord> TimingData;
+
+    // Extract timing data from each timer if they exist
+    if (SyntaxCheckTimer && SyntaxCheckTimer->hasTriggered()) {
+      TimingData["syntaxchecks"] = SyntaxCheckTimer->getTotalTime();
+    }
+
+    if (ExprEngineTimer && ExprEngineTimer->hasTriggered()) {
+      TimingData["exprengine"] = ExprEngineTimer->getTotalTime();
+    }
+
+    if (BugReporterTimer && BugReporterTimer->hasTriggered()) {
+      TimingData["bugreporter"] = BugReporterTimer->getTotalTime();
+    }
+
+    return TimingData;
   }
 
 private:

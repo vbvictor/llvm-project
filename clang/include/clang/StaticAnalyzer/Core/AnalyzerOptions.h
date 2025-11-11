@@ -265,6 +265,12 @@ public:
   unsigned UnoptimizedCFG : 1;
   unsigned PrintStats : 1;
 
+  /// Enable timing collection for external profiling (e.g., clang-tidy) without
+  /// printing to stdout. When enabled, timers are created but not automatically
+  /// printed on exit, allowing external tools to extract timing data.
+  LLVM_PREFERRED_TYPE(bool)
+  unsigned EnableProfilingWithoutPrinting : 1;
+
   /// Do not re-analyze paths leading to exhausted nodes with a different
   /// strategy. We get better code coverage when retry is enabled.
   unsigned NoRetryExhausted : 1;
@@ -323,7 +329,8 @@ public:
         ShouldEmitErrorsOnInvalidConfigValue(false), AnalyzeAll(false),
         AnalyzerDisplayProgress(false), AnalyzerNoteAnalysisEntryPoints(false),
         TrimGraph(false), visualizeExplodedGraphWithGraphViz(false),
-        UnoptimizedCFG(false), PrintStats(false), NoRetryExhausted(false),
+        UnoptimizedCFG(false), PrintStats(false),
+        EnableProfilingWithoutPrinting(false), NoRetryExhausted(false),
         AnalyzerWerror(false) {}
 
   /// Interprets an option's string value as a boolean. The "true" string is

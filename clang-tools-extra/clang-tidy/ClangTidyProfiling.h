@@ -48,6 +48,13 @@ public:
   ClangTidyProfiling(std::optional<StorageParams> Storage);
 
   ~ClangTidyProfiling();
+
+  /// Add analyzer timing data to the profiling records.
+  ///
+  /// Merges timing data from the static analyzer into the profiling records.
+  /// Keys are prefixed with "clang-analyzer:" to distinguish them from
+  /// regular clang-tidy check timings.
+  void addAnalyzerTimingData(const llvm::StringMap<llvm::TimeRecord> &Data);
 };
 
 } // namespace clang::tidy

@@ -88,4 +88,13 @@ ClangTidyProfiling::~ClangTidyProfiling() {
     storeProfileData(TG);
 }
 
+void ClangTidyProfiling::addAnalyzerTimingData(
+    const llvm::StringMap<llvm::TimeRecord> &Data) {
+  for (const auto &Entry : Data) {
+    // Prefix analyzer timing keys to distinguish from clang-tidy checks
+    std::string Key = ("clang-analyzer:" + Entry.getKey()).str();
+    Records[Key] = Entry.getValue();
+  }
+}
+
 } // namespace clang::tidy

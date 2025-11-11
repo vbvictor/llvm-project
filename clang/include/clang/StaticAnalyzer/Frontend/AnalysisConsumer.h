@@ -16,6 +16,8 @@
 
 #include "clang/AST/ASTConsumer.h"
 #include "clang/Basic/LLVM.h"
+#include "llvm/ADT/StringMap.h"
+#include "llvm/Support/Timer.h"
 #include <functional>
 #include <memory>
 
@@ -44,6 +46,16 @@ public:
   ///   });
   virtual void
   AddCheckerRegistrationFn(std::function<void(CheckerRegistry &)> Fn) = 0;
+
+  /// Returns timing data collected during analysis.
+  ///
+  /// The returned map contains timing information for different analysis phases
+  /// (syntax checks, path exploration, bug reporting). Keys are phase names,
+  /// values are TimeRecord structures containing wall time, CPU time, and
+  /// memory usage.
+  ///
+  /// Returns an empty map if timing was not enabled during analysis.
+  virtual llvm::StringMap<llvm::TimeRecord> getAnalyzerTimingData() const = 0;
 };
 
 /// CreateAnalysisConsumer - Creates an ASTConsumer to run various code

@@ -331,10 +331,24 @@ public:
   ClangTidyASTConsumer(std::vector<std::unique_ptr<ASTConsumer>> Consumers,
                        std::unique_ptr<ClangTidyProfiling> Profiling,
                        std::unique_ptr<ast_matchers::MatchFinder> Finder,
-                       std::vector<std::unique_ptr<ClangTidyCheck>> Checks)
+                       std::vector<std::unique_ptr<ClangTidyCheck>> Checks,
+                       ento::AnalysisASTConsumer *AnalysisConsumer = nullptr)
       : MultiplexConsumer(std::move(Consumers)),
         Profiling(std::move(Profiling)), Finder(std::move(Finder)),
-        Checks(std::move(Checks)) {}
+        Checks(std::move(Checks)), AnalysisConsumer(AnalysisConsumer) {}
+
+  ~ClangTidyASTConsumer() override {
+    // Extract analyzer timing data before Profiling is destroyed
+#if CLANG_TIDY_ENABLE_STATIC_ANALYZER
+    if (Profiling && AnalysisConsumer) {
+      llvm::StringMap<llvm::TimeRecord> AnalyzerTimingData =
+          AnalysisConsumer->getAnalyzerTimingData();
+      if (!AnalyzerTimingData.empty()) {
+        Profiling->addAnalyzerTimingData(AnalyzerTimingData);
+      }
+    }
+#endif
+  }
 
 private:
   // Destructor order matters! Profiling must be destructed last.
@@ -342,6 +356,7 @@ private:
   std::unique_ptr<ClangTidyProfiling> Profiling;
   std::unique_ptr<ast_matchers::MatchFinder> Finder;
   std::vector<std::unique_ptr<ClangTidyCheck>> Checks;
+  ento::AnalysisASTConsumer *AnalysisConsumer;
   void anchor() override {};
 };
 
@@ -470,6 +485,8 @@ ClangTidyASTConsumerFactory::createASTConsumer(
   if (!Checks.empty())
     Consumers.push_back(Finder->newASTConsumer());
 
+  ento::AnalysisASTConsumer *AnalysisConsumerPtr = nullptr;
+
 #if CLANG_TIDY_ENABLE_STATIC_ANALYZER
   AnalyzerOptions &AnalyzerOptions = Compiler.getAnalyzerOpts();
   AnalyzerOptions.CheckersAndPackages = getAnalyzerCheckersAndPackages(
@@ -477,16 +494,28 @@ ClangTidyASTConsumerFactory::createASTConsumer(
   if (!AnalyzerOptions.CheckersAndPackages.empty()) {
     setStaticAnalyzerCheckerOpts(Context.getOptions(), AnalyzerOptions);
     AnalyzerOptions.AnalysisDiagOpt = PD_NONE;
+
+    // Enable analyzer timing if clang-tidy profiling is active
+    // Use EnableProfilingWithoutPrinting to collect timing data without
+    // printing a separate "Analyzer timers" section
+    if (Context.getEnableProfiling()) {
+      AnalyzerOptions.EnableProfilingWithoutPrinting = true;
+    }
+
     std::unique_ptr<ento::AnalysisASTConsumer> AnalysisConsumer =
         ento::CreateAnalysisConsumer(Compiler);
     AnalysisConsumer->AddDiagnosticConsumer(
         std::make_unique<AnalyzerDiagnosticConsumer>(Context));
+
+    // Store raw pointer for timing data extraction
+    AnalysisConsumerPtr = AnalysisConsumer.get();
+
     Consumers.push_back(std::move(AnalysisConsumer));
   }
 #endif // CLANG_TIDY_ENABLE_STATIC_ANALYZER
   return std::make_unique<ClangTidyASTConsumer>(
       std::move(Consumers), std::move(Profiling), std::move(Finder),
-      std::move(Checks));
+      std::move(Checks), AnalysisConsumerPtr);
 }
 
 std::vector<std::string> ClangTidyASTConsumerFactory::getCheckNames() {
