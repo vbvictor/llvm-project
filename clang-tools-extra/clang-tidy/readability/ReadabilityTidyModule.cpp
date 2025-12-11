@@ -26,6 +26,7 @@
 #include "EnumInitialValueCheck.h"
 #include "FunctionCognitiveComplexityCheck.h"
 #include "FunctionSizeCheck.h"
+#include "GuardClauseCheck.h"
 #include "IdentifierLengthCheck.h"
 #include "IdentifierNamingCheck.h"
 #include "ImplicitBoolConversionCheck.h"
@@ -106,6 +107,7 @@ public:
         "readability-function-cognitive-complexity");
     CheckFactories.registerCheck<FunctionSizeCheck>(
         "readability-function-size");
+    CheckFactories.registerCheck<GuardClauseCheck>("readability-guard-clause");
     CheckFactories.registerCheck<IdentifierLengthCheck>(
         "readability-identifier-length");
     CheckFactories.registerCheck<IdentifierNamingCheck>(

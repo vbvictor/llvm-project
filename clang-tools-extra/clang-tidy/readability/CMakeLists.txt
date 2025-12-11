@@ -21,6 +21,7 @@ add_clang_library(clangTidyReadabilityModule STATIC
   EnumInitialValueCheck.cpp
   FunctionCognitiveComplexityCheck.cpp
   FunctionSizeCheck.cpp
+  GuardClauseCheck.cpp
   IdentifierLengthCheck.cpp
   IdentifierNamingCheck.cpp
   ImplicitBoolConversionCheck.cpp

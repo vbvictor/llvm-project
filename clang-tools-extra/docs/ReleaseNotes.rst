@@ -241,6 +241,13 @@ New checks
   Finds virtual function overrides with different visibility than the function
   in the base class.
 
+- New :doc:`readability-guard-clause
+  <clang-tidy/checks/readability/guard-clause>` check.
+
+  Detects opportunities to introduce guard clauses to reduce nesting and
+  improve code readability by using early returns in functions or continue
+  statements in loops.
+
 - New :doc:`readability-redundant-parentheses
   <clang-tidy/checks/readability/redundant-parentheses>` check.
 
