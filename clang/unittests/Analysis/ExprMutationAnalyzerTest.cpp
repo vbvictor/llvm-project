@@ -51,6 +51,13 @@ StmtMatcher withEnclosingCompound(ExprMatcher Matcher) {
   return expr(Matcher, hasAncestor(compoundStmt().bind("stmt"))).bind("expr");
 }
 
+auto ctorWithParm(StringRef ParmName) {
+  return cxxConstructorDecl(isDefinition(),
+                            hasAnyParameter(parmVarDecl(hasName(ParmName))
+                                                .bind("parm")))
+      .bind("ctor");
+}
+
 bool isMutated(const SmallVectorImpl<BoundNodes> &Results, ASTUnit *AST) {
   const auto *const S = selectFirst<Stmt>("stmt", Results);
   const auto *const E = selectFirst<Expr>("expr", Results);
@@ -63,6 +70,19 @@ bool isDeclMutated(const SmallVectorImpl<BoundNodes> &Results, ASTUnit *AST) {
   const auto *const D = selectFirst<Decl>("decl", Results);
   TraversalKindScope RAII(AST->getASTContext(), TK_AsIs);
   return ExprMutationAnalyzer(*S, AST->getASTContext()).isMutated(D);
+}
+
+bool isCtorParmMutated(const SmallVectorImpl<BoundNodes> &Results,
+                       ASTUnit *AST) {
+  const auto *Ctor = selectFirst<CXXConstructorDecl>("ctor", Results);
+  const auto *Parm = selectFirst<ParmVarDecl>("parm", Results);
+  if (!Ctor || !Parm)
+    return false;
+  TraversalKindScope RAII(AST->getASTContext(), TK_AsIs);
+  ExprMutationAnalyzer::Memoized Memoized;
+  return FunctionParmMutationAnalyzer::getFunctionParmMutationAnalyzer(
+             *Ctor, AST->getASTContext(), Memoized)
+      ->isMutated(Parm);
 }
 
 SmallVector<std::string, 1>
@@ -2106,6 +2126,584 @@ TEST(ExprMutationAnalyzerTest, PointeeMutatedByPassAsPointerToPointer) {
         match(withEnclosingCompound(declRefTo("ip")), AST->getASTContext());
     EXPECT_TRUE(isPointeeMutated(Results, AST.get()));
   }
+}
+
+// Tests for FunctionParmMutationAnalyzer with constructor member initializer
+// lists. These tests verify that when analyzing whether a constructor parameter
+// can be made const, the analyzer correctly considers mutations in the member
+// initializer list.
+TEST(ExprMutationAnalyzerTest, FunctionParmMutatedByCtorInitNonConstBase) {
+  // Base class constructor takes non-const reference - x should be mutated
+  auto AST = buildASTFromCode(R"(
+    struct A { A(int&); };
+    struct B : A { B(int& x) : A(x) {} };
+  )");
+  auto Results = match(ctorWithParm("x"), AST->getASTContext());
+  EXPECT_TRUE(isCtorParmMutated(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, FunctionParmMutatedByCtorInitConstBase) {
+  // Base class constructor takes const reference - x should NOT be mutated
+  auto AST = buildASTFromCode(R"(
+    struct A { A(const int&); };
+    struct B : A { B(int& x) : A(x) {} };
+  )");
+  auto Results = match(ctorWithParm("x"), AST->getASTContext());
+  EXPECT_FALSE(isCtorParmMutated(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, FunctionParmMutatedByCtorInitNonConstMember) {
+  // Member initialization with non-const reference
+  auto AST = buildASTFromCode(R"(
+    struct A { A(int&); };
+    struct B { A a; B(int& x) : a(x) {} };
+  )");
+  auto Results = match(ctorWithParm("x"), AST->getASTContext());
+  EXPECT_TRUE(isCtorParmMutated(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, FunctionParmMutatedByCtorInitConstMember) {
+  // Member initialization with const reference
+  auto AST = buildASTFromCode(R"(
+    struct A { A(const int&); };
+    struct B { A a; B(int& x) : a(x) {} };
+  )");
+  auto Results = match(ctorWithParm("x"), AST->getASTContext());
+  EXPECT_FALSE(isCtorParmMutated(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, FunctionParmMutatedByCtorDelegatingNonConst) {
+  // Delegating constructor with non-const reference
+  auto AST = buildASTFromCode(R"(
+    struct A {
+      A(int&);
+      A(int& x, int) : A(x) {}
+    };
+  )");
+  auto Results = match(ctorWithParm("x"), AST->getASTContext());
+  EXPECT_TRUE(isCtorParmMutated(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, FunctionParmMutatedByCtorDelegatingConst) {
+  // Delegating constructor with const reference
+  auto AST = buildASTFromCode(R"(
+    struct A {
+      A(const int&);
+      A(int& x, int) : A(x) {}
+    };
+  )");
+  auto Results = match(ctorWithParm("x"), AST->getASTContext());
+  EXPECT_FALSE(isCtorParmMutated(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, FunctionParmMutatedByCtorInitMultipleOneMutates) {
+  // Multiple member initializers - only one mutates
+  auto AST = buildASTFromCode(R"(
+    struct A { A(int&); };
+    struct B { B(const int&); };
+    struct C { A a; B b; C(int& x) : a(x), b(x) {} };
+  )");
+  auto Results = match(ctorWithParm("x"), AST->getASTContext());
+  EXPECT_TRUE(isCtorParmMutated(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, FunctionParmMutatedByCtorInitMultipleNoneMutates) {
+  // Multiple member initializers - none mutate
+  auto AST = buildASTFromCode(R"(
+    struct A { A(const int&); };
+    struct B { B(const int&); };
+    struct C { A a; B b; C(int& x) : a(x), b(x) {} };
+  )");
+  auto Results = match(ctorWithParm("x"), AST->getASTContext());
+  EXPECT_FALSE(isCtorParmMutated(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, FunctionParmMutatedByCtorBodyNotInitList) {
+  // Parameter mutated in body, not in init list
+  auto AST = buildASTFromCode(R"(
+    struct A { A(const int&); };
+    struct B : A { B(int& x) : A(x) { x = 10; } };
+  )");
+  auto Results = match(ctorWithParm("x"), AST->getASTContext());
+  EXPECT_TRUE(isCtorParmMutated(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, FunctionParmMutatedByCtorBraceInitNonConst) {
+  // Brace initialization with non-const reference
+  auto AST = buildASTFromCode(R"(
+    struct A { A(int&); };
+    struct B { A a; B(int& x) : a{x} {} };
+  )");
+  auto Results = match(ctorWithParm("x"), AST->getASTContext());
+  EXPECT_TRUE(isCtorParmMutated(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, FunctionParmMutatedByCtorBraceInitConst) {
+  // Brace initialization with const reference
+  auto AST = buildASTFromCode(R"(
+    struct A { A(const int&); };
+    struct B { A a; B(int& x) : a{x} {} };
+  )");
+  auto Results = match(ctorWithParm("x"), AST->getASTContext());
+  EXPECT_FALSE(isCtorParmMutated(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, FunctionParmMutatedByCtorRefMemberNonConst) {
+  // Binding to a non-const reference member is mutation
+  auto AST = buildASTFromCode(R"(
+    struct A { int& r; A(int& x) : r(x) {} };
+  )");
+  auto Results = match(ctorWithParm("x"), AST->getASTContext());
+  EXPECT_TRUE(isCtorParmMutated(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, FunctionParmMutatedByCtorRefMemberConst) {
+  // Direct member initialization with const reference
+  auto AST = buildASTFromCode(R"(
+    struct A { const int& r; A(int& x) : r(x) {} };
+  )");
+  auto Results = match(ctorWithParm("x"), AST->getASTContext());
+  EXPECT_FALSE(isCtorParmMutated(Results, AST.get()));
+}
+
+// Complex template and inheritance tests for constructor init-lists
+TEST(ExprMutationAnalyzerTest, FunctionParmMutatedByCtorTemplateBaseMember) {
+  // Non-template derived class using template base with non-const ref member
+  // This tests the instantiated template, not the primary template
+  auto AST = buildASTFromCode(R"(
+    template<typename T> struct Base { Base(T&); };
+    struct Derived : Base<int> {
+      int& r;
+      Derived(int& x) : Base<int>(x), r(x) {}
+    };
+  )");
+  auto Results = match(ctorWithParm("x"), AST->getASTContext());
+  EXPECT_TRUE(isCtorParmMutated(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, FunctionParmNotMutatedByCtorTemplateBaseMemberConst) {
+  // Non-template derived class using template base with const ref member
+  auto AST = buildASTFromCode(R"(
+    template<typename T> struct Base { Base(const T&); };
+    struct Derived : Base<int> {
+      const int& r;
+      Derived(int& x) : Base<int>(x), r(x) {}
+    };
+  )");
+  auto Results = match(ctorWithParm("x"), AST->getASTContext());
+  EXPECT_FALSE(isCtorParmMutated(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, FunctionParmMutatedByCtorMultipleInheritance) {
+  // Multiple inheritance - one base takes non-const ref
+  auto AST = buildASTFromCode(R"(
+    struct A { A(int&); };
+    struct B { B(const int&); };
+    struct C : A, B { C(int& x) : A(x), B(x) {} };
+  )");
+  auto Results = match(ctorWithParm("x"), AST->getASTContext());
+  EXPECT_TRUE(isCtorParmMutated(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, FunctionParmMutatedByCtorMultipleInheritanceAllConst) {
+  // Multiple inheritance - all bases take const ref
+  auto AST = buildASTFromCode(R"(
+    struct A { A(const int&); };
+    struct B { B(const int&); };
+    struct C : A, B { C(int& x) : A(x), B(x) {} };
+  )");
+  auto Results = match(ctorWithParm("x"), AST->getASTContext());
+  EXPECT_FALSE(isCtorParmMutated(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, FunctionParmMutatedByCtorVirtualBase) {
+  // Virtual base class with non-const ref
+  auto AST = buildASTFromCode(R"(
+    struct A { A(int&); };
+    struct B : virtual A { B(int& x) : A(x) {} };
+  )");
+  auto Results = match(ctorWithParm("x"), AST->getASTContext());
+  EXPECT_TRUE(isCtorParmMutated(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, FunctionParmMutatedByCtorDiamondInheritance) {
+  // Diamond inheritance pattern
+  auto AST = buildASTFromCode(R"(
+    struct A { A(int&); };
+    struct B : virtual A { B(int& x) : A(x) {} };
+    struct C : virtual A { C(int& x) : A(x) {} };
+    struct D : B, C { D(int& x) : A(x), B(x), C(x) {} };
+  )");
+  auto Results = match(ctorWithParm("x"), AST->getASTContext());
+  EXPECT_TRUE(isCtorParmMutated(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, FunctionParmMutatedByCtorPointerMember) {
+  // Non-const pointer member
+  auto AST = buildASTFromCode(R"(
+    struct A { int* p; A(int* x) : p(x) {} };
+  )");
+  auto Results = match(ctorWithParm("x"), AST->getASTContext());
+  EXPECT_TRUE(isCtorParmMutated(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, FunctionParmMutatedByCtorConstPointerMember) {
+  // Const pointer member (pointer to const)
+  auto AST = buildASTFromCode(R"(
+    struct A { const int* p; A(int* x) : p(x) {} };
+  )");
+  auto Results = match(ctorWithParm("x"), AST->getASTContext());
+  EXPECT_FALSE(isCtorParmMutated(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, FunctionParmMutatedByCtorAddressOfToPointerMember) {
+  // Taking address of parameter to initialize pointer member
+  auto AST = buildASTFromCode(R"(
+    struct A { int* p; A(int& x) : p(&x) {} };
+  )");
+  auto Results = match(ctorWithParm("x"), AST->getASTContext());
+  EXPECT_TRUE(isCtorParmMutated(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, FunctionParmMutatedByCtorAddressOfToConstPointerMember) {
+  // Taking address of parameter to initialize const pointer member
+  auto AST = buildASTFromCode(R"(
+    struct A { const int* p; A(int& x) : p(&x) {} };
+  )");
+  auto Results = match(ctorWithParm("x"), AST->getASTContext());
+  EXPECT_FALSE(isCtorParmMutated(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, FunctionParmMutatedByCtorNestedClass) {
+  // Nested class member with non-const ref constructor
+  auto AST = buildASTFromCode(R"(
+    struct Outer {
+      struct Inner { Inner(int&); };
+      Inner i;
+      Outer(int& x) : i(x) {}
+    };
+  )");
+  auto Results = match(ctorWithParm("x"), AST->getASTContext());
+  EXPECT_TRUE(isCtorParmMutated(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, FunctionParmMutatedByCtorMixedMembersAndBases) {
+  // Mix of base and member initializers
+  auto AST = buildASTFromCode(R"(
+    struct Base { Base(const int&); };
+    struct Member { Member(int&); };
+    struct Derived : Base {
+      Member m;
+      Derived(int& x) : Base(x), m(x) {}
+    };
+  )");
+  auto Results = match(ctorWithParm("x"), AST->getASTContext());
+  EXPECT_TRUE(isCtorParmMutated(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, FunctionParmMutatedByCtorMixedMembersAndBasesAllConst) {
+  // Mix of base and member initializers - all const
+  auto AST = buildASTFromCode(R"(
+    struct Base { Base(const int&); };
+    struct Member { Member(const int&); };
+    struct Derived : Base {
+      Member m;
+      Derived(int& x) : Base(x), m(x) {}
+    };
+  )");
+  auto Results = match(ctorWithParm("x"), AST->getASTContext());
+  EXPECT_FALSE(isCtorParmMutated(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, FunctionParmMutatedByCtorTemplateBaseClass) {
+  // Template base class
+  auto AST = buildASTFromCode(R"(
+    template<typename T> struct Base { Base(T&); };
+    struct Derived : Base<int> {
+      Derived(int& x) : Base<int>(x) {}
+    };
+  )");
+  auto Results = match(ctorWithParm("x"), AST->getASTContext());
+  EXPECT_TRUE(isCtorParmMutated(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, FunctionParmMutatedByCtorMultipleParamsOneMutated) {
+  // Multiple parameters - only one mutated
+  auto AST = buildASTFromCode(R"(
+    struct A { A(int&); };
+    struct B { B(const int&); };
+    struct C {
+      A a; B b;
+      C(int& x, int& y) : a(x), b(y) {}
+    };
+  )");
+  // Check x - should be mutated (passed to A which takes int&)
+  auto Results = match(ctorWithParm("x"), AST->getASTContext());
+  EXPECT_TRUE(isCtorParmMutated(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, FunctionParmNotMutatedByCtorMultipleParams) {
+  // Multiple parameters - check the non-mutated one
+  auto AST = buildASTFromCode(R"(
+    struct A { A(int&); };
+    struct B { B(const int&); };
+    struct C {
+      A a; B b;
+      C(int& x, int& y) : a(x), b(y) {}
+    };
+  )");
+  // Check y - should NOT be mutated (passed to B which takes const int&)
+  auto Results = match(ctorWithParm("y"), AST->getASTContext());
+  EXPECT_FALSE(isCtorParmMutated(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, FunctionParmMutatedByCtorInitListExpr) {
+  // Array member initialization
+  auto AST = buildASTFromCode(R"(
+    struct A {
+      int arr[2];
+      A(int& x, int& y) : arr{x, y} {}
+    };
+  )");
+  auto Results = match(ctorWithParm("x"), AST->getASTContext());
+  // Array initialization copies values - doesn't mutate parameters
+  EXPECT_FALSE(isCtorParmMutated(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, FunctionParmMutatedByCtorTwoRefMembers) {
+  // Two reference members
+  auto AST = buildASTFromCode(R"(
+    struct A { int& r; int& s; A(int& x, int& y) : r(x), s(y) {} };
+  )");
+  auto Results = match(ctorWithParm("x"), AST->getASTContext());
+  EXPECT_TRUE(isCtorParmMutated(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, FunctionParmMutatedByCtorTernaryInInit) {
+  // Ternary operator in initializer - x branch
+  auto AST = buildASTFromCode(R"(
+    struct A { int& r; A(int& x, int& y, bool b) : r(b ? x : y) {} };
+  )");
+  auto Results = match(ctorWithParm("x"), AST->getASTContext());
+  EXPECT_TRUE(isCtorParmMutated(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, FunctionParmMutatedByCtorTernaryInInitY) {
+  // Ternary operator in initializer - y branch
+  auto AST = buildASTFromCode(R"(
+    struct A { int& r; A(int& x, int& y, bool b) : r(b ? x : y) {} };
+  )");
+  auto Results = match(ctorWithParm("y"), AST->getASTContext());
+  EXPECT_TRUE(isCtorParmMutated(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, FunctionParmMutatedByCtorDefaultArg) {
+  // Default argument in base constructor
+  auto AST = buildASTFromCode(R"(
+    struct A { A(int& x, int = 0); };
+    struct B : A { B(int& x) : A(x) {} };
+  )");
+  auto Results = match(ctorWithParm("x"), AST->getASTContext());
+  EXPECT_TRUE(isCtorParmMutated(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, FunctionParmNotMutatedByCtorPassByValue) {
+  // Base takes by value - parameter not mutated
+  auto AST = buildASTFromCode(R"(
+    struct A { A(int x); };
+    struct B : A { B(int& x) : A(x) {} };
+  )");
+  auto Results = match(ctorWithParm("x"), AST->getASTContext());
+  EXPECT_FALSE(isCtorParmMutated(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, FunctionParmMutatedByCtorRvalueRef) {
+  // Base takes rvalue reference
+  auto AST = buildASTFromCode(R"(
+    struct A { A(int&& x); };
+    struct B : A { B(int& x) : A(static_cast<int&&>(x)) {} };
+  )");
+  auto Results = match(ctorWithParm("x"), AST->getASTContext());
+  EXPECT_TRUE(isCtorParmMutated(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, FunctionParmNotMutatedByCtorConstRvalueRef) {
+  // Base takes const rvalue reference
+  auto AST = buildASTFromCode(R"(
+    struct A { A(const int&& x); };
+    struct B : A { B(int& x) : A(static_cast<const int&&>(x)) {} };
+  )");
+  auto Results = match(ctorWithParm("x"), AST->getASTContext());
+  EXPECT_FALSE(isCtorParmMutated(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, FunctionParmMutatedByCtorPtrToRefMember) {
+  // Pointer parameter bound to reference member via dereference
+  auto AST = buildASTFromCode(R"(
+    struct A { int& r; A(int* x) : r(*x) {} };
+  )");
+  auto Results = match(ctorWithParm("x"), AST->getASTContext());
+  EXPECT_TRUE(isCtorParmMutated(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, FunctionParmNotMutatedByCtorPtrToConstRefMember) {
+  // Pointer parameter bound to const reference member via dereference
+  auto AST = buildASTFromCode(R"(
+    struct A { const int& r; A(int* x) : r(*x) {} };
+  )");
+  auto Results = match(ctorWithParm("x"), AST->getASTContext());
+  EXPECT_FALSE(isCtorParmMutated(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, FunctionParmMutatedByCtorStdMove) {
+  // std::move in init list - moves from parameter
+  auto AST = buildASTFromCode(
+      StdRemoveReference + StdMove + R"(
+    struct A { A(int&&); };
+    struct B : A { B(int& x) : A(std::move(x)) {} };
+  )");
+  auto Results = match(ctorWithParm("x"), AST->getASTContext());
+  EXPECT_TRUE(isCtorParmMutated(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, FunctionParmMutatedByCtorNestedConstruct) {
+  // Nested construction - parameter passed through
+  auto AST = buildASTFromCode(R"(
+    struct Inner { Inner(int&); };
+    struct Outer { Outer(Inner); };
+    struct A { Outer o; A(int& x) : o(Inner(x)) {} };
+  )");
+  auto Results = match(ctorWithParm("x"), AST->getASTContext());
+  EXPECT_TRUE(isCtorParmMutated(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, FunctionParmNotMutatedByCtorNestedConstructConst) {
+  // Nested construction - parameter passed through const ref
+  auto AST = buildASTFromCode(R"(
+    struct Inner { Inner(const int&); };
+    struct Outer { Outer(Inner); };
+    struct A { Outer o; A(int& x) : o(Inner(x)) {} };
+  )");
+  auto Results = match(ctorWithParm("x"), AST->getASTContext());
+  EXPECT_FALSE(isCtorParmMutated(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, FunctionParmMutatedByCtorCommaExpr) {
+  // Comma operator in init - uses parameter in second operand
+  auto AST = buildASTFromCode(R"(
+    struct A { int& r; A(int& x, int) : r((0, x)) {} };
+  )");
+  auto Results = match(ctorWithParm("x"), AST->getASTContext());
+  EXPECT_TRUE(isCtorParmMutated(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, FunctionParmMutatedByCtorThreeDeep) {
+  // Three levels of inheritance with non-const ref
+  auto AST = buildASTFromCode(R"(
+    struct A { A(int&); };
+    struct B : A { B(int& x) : A(x) {} };
+    struct C : B { C(int& x) : B(x) {} };
+  )");
+  auto Results = match(ctorWithParm("x"), AST->getASTContext());
+  EXPECT_TRUE(isCtorParmMutated(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, FunctionParmNotMutatedByCtorThreeDeepConst) {
+  // Three levels of inheritance with const ref at bottom
+  auto AST = buildASTFromCode(R"(
+    struct A { A(const int&); };
+    struct B : A { B(int& x) : A(x) {} };
+    struct C : B { C(int& x) : B(x) {} };
+  )");
+  auto Results = match(ctorWithParm("x"), AST->getASTContext());
+  EXPECT_FALSE(isCtorParmMutated(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, FunctionParmMutatedByCtorExplicitCast) {
+  // Explicit cast to non-const in init list
+  auto AST = buildASTFromCode(R"(
+    struct A { int& r; A(const int& x) : r(const_cast<int&>(x)) {} };
+  )");
+  auto Results = match(ctorWithParm("x"), AST->getASTContext());
+  EXPECT_TRUE(isCtorParmMutated(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, FunctionParmMutatedByCtorMultipleMembersOneMutates) {
+  // Multiple members - one binds to non-const ref
+  auto AST = buildASTFromCode(R"(
+    struct A {
+      const int& cr;
+      int& r;
+      const int* cp;
+      A(int& x) : cr(x), r(x), cp(&x) {}
+    };
+  )");
+  auto Results = match(ctorWithParm("x"), AST->getASTContext());
+  EXPECT_TRUE(isCtorParmMutated(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, FunctionParmNotMutatedByCtorMultipleMembersAllConst) {
+  // Multiple members - all const
+  auto AST = buildASTFromCode(R"(
+    struct A {
+      const int& cr1;
+      const int& cr2;
+      const int* cp;
+      A(int& x) : cr1(x), cr2(x), cp(&x) {}
+    };
+  )");
+  auto Results = match(ctorWithParm("x"), AST->getASTContext());
+  EXPECT_FALSE(isCtorParmMutated(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, FunctionParmMutatedByCtorWithDefaultMemberInit) {
+  // Default member initializer overridden by init-list
+  auto AST = buildASTFromCode(R"(
+    struct A { A(int&); };
+    struct B {
+      A a = A(*new int);  // default init
+      B(int& x) : a(x) {} // overridden
+    };
+  )");
+  auto Results = match(ctorWithParm("x"), AST->getASTContext());
+  EXPECT_TRUE(isCtorParmMutated(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, FunctionParmMutatedByCtorArrayOfStructs) {
+  // Array of structs member initialization
+  auto AST = buildASTFromCode(R"(
+    struct Inner { int& r; };
+    struct Outer { Inner arr[1]; Outer(int& x) : arr{{x}} {} };
+  )");
+  auto Results = match(ctorWithParm("x"), AST->getASTContext());
+  EXPECT_TRUE(isCtorParmMutated(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, FunctionParmNotMutatedByCtorValueMember) {
+  // Value member - copies, doesn't mutate
+  auto AST = buildASTFromCode(R"(
+    struct A { int v; A(int& x) : v(x) {} };
+  )");
+  auto Results = match(ctorWithParm("x"), AST->getASTContext());
+  EXPECT_FALSE(isCtorParmMutated(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, FunctionParmMutatedByCtorRefToPointerMember) {
+  // Reference to pointer member (pointer itself can be changed)
+  auto AST = buildASTFromCode(R"(
+    struct A { int*& rp; A(int*& x) : rp(x) {} };
+  )");
+  auto Results = match(ctorWithParm("x"), AST->getASTContext());
+  EXPECT_TRUE(isCtorParmMutated(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, FunctionParmNotMutatedByCtorConstRefToPointerMember) {
+  // Const reference to pointer member
+  auto AST = buildASTFromCode(R"(
+    struct A { int* const& rp; A(int*& x) : rp(x) {} };
+  )");
+  auto Results = match(ctorWithParm("x"), AST->getASTContext());
+  EXPECT_FALSE(isCtorParmMutated(Results, AST.get()));
 }
 
 } // namespace clang

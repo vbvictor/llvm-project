@@ -828,6 +828,43 @@ FunctionParmMutationAnalyzer::FunctionParmMutationAnalyzer(
         if (const Stmt *S = InitAnalyzer.findMutation(Parm))
           Results[Parm] = S;
       }
+
+      // Check if a parameter is bound to a non-const reference/pointer member.
+      // This counts as mutation because the member provides mutable access to
+      // the parameter's referent.
+      const FieldDecl *Field = Init->getMember();
+      if (!Field)
+        continue;
+
+      QualType FieldType = Field->getType();
+      QualType PointeeType;
+      if (FieldType->isReferenceType() || FieldType->isPointerType())
+        PointeeType = FieldType->getPointeeType();
+      else
+        continue;
+
+      // For dependent types, we can't reliably determine const-ness,
+      // so we conservatively assume the parameter is not mutated.
+      if (PointeeType->isDependentType())
+        continue;
+
+      // Check for non-const reference or non-const pointer member
+      if (PointeeType.isConstQualified())
+        continue;
+
+      // Find which parameter is being bound to this member
+      const Expr *InitExpr = Init->getInit();
+      if (!InitExpr)
+        continue;
+
+      auto MatchedParams =
+          match(findAll(declRefExpr(to(parmVarDecl().bind("parm")))), *InitExpr,
+                Context);
+      for (const auto &Nodes : MatchedParams) {
+        const auto *MatchedParm = Nodes.getNodeAs<ParmVarDecl>("parm");
+        if (MatchedParm && !Results.contains(MatchedParm))
+          Results[MatchedParm] = InitExpr;
+      }
     }
   }
 }
