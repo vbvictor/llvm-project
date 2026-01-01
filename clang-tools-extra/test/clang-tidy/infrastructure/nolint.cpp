@@ -1,6 +1,9 @@
 // REQUIRES: static-analyzer
 // RUN: %check_clang_tidy %s google-explicit-constructor,clang-diagnostic-unused-variable,clang-analyzer-core.UndefinedBinaryOperatorResult,modernize-avoid-c-arrays,cppcoreguidelines-avoid-c-arrays,cppcoreguidelines-pro-type-member-init %t -- -extra-arg=-Wunused-variable -- -I%S/Inputs/nolint
 
+// CHECK-MESSAGES: warning: found alias checks: 'modernize-avoid-c-arrays' is an alias of 'cppcoreguidelines-avoid-c-arrays' [clang-tidy-config]
+// CHECK-MESSAGES: note: please disable the alias check to avoid running duplicate checks
+
 #include "trigger_warning.h"
 void I(int& Out) {
   int In;

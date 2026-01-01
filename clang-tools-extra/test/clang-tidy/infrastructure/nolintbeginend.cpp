@@ -1,5 +1,8 @@
 // RUN: %check_clang_tidy %s google-explicit-constructor,clang-diagnostic-unused-variable,cppcoreguidelines-avoid-c-arrays,modernize-avoid-c-arrays %t -- -extra-arg=-Wunused-variable
 
+// CHECK-MESSAGES: warning: found alias checks: 'modernize-avoid-c-arrays' is an alias of 'cppcoreguidelines-avoid-c-arrays' [clang-tidy-config]
+// CHECK-MESSAGES: note: please disable the alias check to avoid running duplicate checks
+
 class A { A(int i); };
 // CHECK-MESSAGES: :[[@LINE-1]]:11: warning: single-argument constructors must be marked explicit
 

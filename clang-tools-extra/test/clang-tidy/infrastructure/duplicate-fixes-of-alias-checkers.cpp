@@ -1,5 +1,8 @@
 // RUN: %check_clang_tidy %s cppcoreguidelines-pro-type-member-init,hicpp-member-init,modernize-use-emplace,hicpp-use-emplace %t
 
+// CHECK-MESSAGES: warning: found alias checks: 'hicpp-member-init' is an alias of 'cppcoreguidelines-pro-type-member-init', 'modernize-use-emplace' is an alias of 'hicpp-use-emplace' [clang-tidy-config]
+// CHECK-MESSAGES: note: please disable the alias check to avoid running duplicate checks
+
 namespace std {
 
 template <typename T>

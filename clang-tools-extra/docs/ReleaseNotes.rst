@@ -164,6 +164,10 @@ Improvements to clang-tidy
 - Improved :program:`clang-tidy` option `-quiet` by suppressing diagnostic
   count messages.
 
+- Improved :program:`clang-tidy` by warning when alias checks are both enabled,
+  which can result in duplicate diagnostics and conflicting fix-its. The warning
+  can be suppressed with the `-quiet` flag.
+
 - Improved :program:`clang-tidy` by not crashing when an empty `directory`
   field is used in a compilation database; the current working directory
   will be used instead, and an error message will be printed.

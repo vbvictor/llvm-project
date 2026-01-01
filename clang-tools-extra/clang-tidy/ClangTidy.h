@@ -29,13 +29,15 @@ class CompilationDatabase;
 
 namespace tidy {
 
+class ClangTidyCheck;
 class ClangTidyCheckFactories;
 
 class ClangTidyASTConsumerFactory {
 public:
   ClangTidyASTConsumerFactory(
       ClangTidyContext &Context,
-      IntrusiveRefCntPtr<llvm::vfs::OverlayFileSystem> OverlayFS = nullptr);
+      IntrusiveRefCntPtr<llvm::vfs::OverlayFileSystem> OverlayFS = nullptr,
+      bool Quiet = false);
 
   /// Returns an ASTConsumer that runs the specified clang-tidy checks.
   std::unique_ptr<clang::ASTConsumer>
@@ -48,9 +50,15 @@ public:
   ClangTidyOptions::OptionMap getCheckOptions();
 
 private:
+  void detectAndWarnAboutAliasChecks(
+      const std::vector<std::unique_ptr<ClangTidyCheck>> &Checks,
+      const llvm::DenseMap<ClangTidyCheck *, std::string> &CheckNames);
+
   ClangTidyContext &Context;
   IntrusiveRefCntPtr<llvm::vfs::OverlayFileSystem> OverlayFS;
   std::unique_ptr<ClangTidyCheckFactories> CheckFactories;
+  bool Quiet;
+  bool AliasWarningEmitted = false;
 };
 
 /// Fills the list of check names that are enabled when the provided

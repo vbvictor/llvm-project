@@ -1,3 +1,6 @@
+// CHECK-MESSAGES: warning: found alias checks: 'modernize-avoid-c-arrays' is an alias of 'cppcoreguidelines-avoid-c-arrays' [clang-tidy-config]
+// CHECK-MESSAGES: note: please disable the alias check to avoid running duplicate checks
+
 // NOLINTNEXTLINE
 class A { A(int i); };
 

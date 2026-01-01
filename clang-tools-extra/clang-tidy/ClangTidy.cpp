@@ -37,6 +37,7 @@
 #include "clang/Tooling/Refactoring.h"
 #include "clang/Tooling/Tooling.h"
 #include "llvm/Support/Process.h"
+#include <map>
 #include <utility>
 
 #if CLANG_TIDY_ENABLE_STATIC_ANALYZER
@@ -349,9 +350,9 @@ private:
 
 ClangTidyASTConsumerFactory::ClangTidyASTConsumerFactory(
     ClangTidyContext &Context,
-    IntrusiveRefCntPtr<llvm::vfs::OverlayFileSystem> OverlayFS)
+    IntrusiveRefCntPtr<llvm::vfs::OverlayFileSystem> OverlayFS, bool Quiet)
     : Context(Context), OverlayFS(std::move(OverlayFS)),
-      CheckFactories(new ClangTidyCheckFactories) {
+      CheckFactories(new ClangTidyCheckFactories), Quiet(Quiet) {
 #if CLANG_TIDY_ENABLE_QUERY_BASED_CUSTOM_CHECKS
   if (Context.canExperimentalCustomChecks() && custom::RegisterCustomChecks)
     custom::RegisterCustomChecks(Context.getOptions(), *CheckFactories);
@@ -411,6 +412,55 @@ static CheckersList getAnalyzerCheckersAndPackages(ClangTidyContext &Context,
 }
 #endif // CLANG_TIDY_ENABLE_STATIC_ANALYZER
 
+void ClangTidyASTConsumerFactory::detectAndWarnAboutAliasChecks(
+    const std::vector<std::unique_ptr<ClangTidyCheck>> &Checks,
+    const llvm::DenseMap<ClangTidyCheck *, std::string> &CheckNames) {
+  if (Quiet || AliasWarningEmitted || Checks.empty())
+    return;
+
+  // Map from vtable pointer to list of check names
+  // Checks with the same vtable pointer are of the same type (aliases)
+  std::map<const void *, std::vector<std::string>> VTableToChecks;
+
+  for (const auto &Check : Checks) {
+    // Get the vtable pointer by casting to void**
+    // The vtable pointer is stored at the beginning of the object
+    const void *VTablePtr = *reinterpret_cast<const void *const *>(Check.get());
+    auto It = CheckNames.find(Check.get());
+    if (It != CheckNames.end()) {
+      VTableToChecks[VTablePtr].push_back(It->second);
+    }
+  }
+
+  // Find all groups of aliases (same vtable = same type)
+  std::vector<std::string> AliasMessages;
+  for (const auto &Entry : VTableToChecks) {
+    const std::vector<std::string> &Names = Entry.second;
+    if (Names.size() > 1) {
+      // Sort check names for consistent output
+      std::vector<std::string> SortedNames = Names;
+      llvm::sort(SortedNames);
+
+      // Build message: "X is an alias of Y"
+      // We pick the first (lexicographically) as the canonical name
+      std::string Canonical = SortedNames[0];
+      for (size_t I = 1; I < SortedNames.size(); ++I) {
+        AliasMessages.push_back("'" + SortedNames[I] + "' is an alias of '" +
+                                Canonical + "'");
+      }
+    }
+  }
+
+  if (!AliasMessages.empty()) {
+    Context.configurationDiag("found alias checks: " +
+                              llvm::join(AliasMessages, ", "));
+    Context.configurationDiag(
+        "please disable the alias check to avoid running duplicate checks",
+        DiagnosticIDs::Note);
+    AliasWarningEmitted = true;
+  }
+}
+
 std::unique_ptr<clang::ASTConsumer>
 ClangTidyASTConsumerFactory::createASTConsumer(
     clang::CompilerInstance &Compiler, StringRef File) {
@@ -431,8 +481,23 @@ ClangTidyASTConsumerFactory::createASTConsumer(
   if (Context.canExperimentalCustomChecks() && custom::RegisterCustomChecks)
     custom::RegisterCustomChecks(Context.getOptions(), *CheckFactories);
 #endif
-  std::vector<std::unique_ptr<ClangTidyCheck>> Checks =
-      CheckFactories->createChecksForLanguage(&Context);
+  // Create checks and build a map from check pointer to name
+  std::vector<std::unique_ptr<ClangTidyCheck>> Checks;
+  llvm::DenseMap<ClangTidyCheck *, std::string> CheckToName;
+  const LangOptions &LO = Context.getLangOpts();
+  for (const auto &Factory : *CheckFactories) {
+    if (!Context.isCheckEnabled(Factory.getKey()))
+      continue;
+    std::unique_ptr<ClangTidyCheck> Check =
+        Factory.getValue()(Factory.getKey(), &Context);
+    if (Check->isLanguageVersionSupported(LO)) {
+      CheckToName[Check.get()] = Factory.getKey().str();
+      Checks.push_back(std::move(Check));
+    }
+  }
+
+  // Detect and warn about alias checks that are both enabled
+  detectAndWarnAboutAliasChecks(Checks, CheckToName);
 
   ast_matchers::MatchFinder::MatchFinderOptions FinderOptions;
 
@@ -603,7 +668,7 @@ runClangTidy(clang::tidy::ClangTidyContext &Context,
     ActionFactory(ClangTidyContext &Context,
                   IntrusiveRefCntPtr<llvm::vfs::OverlayFileSystem> BaseFS,
                   bool Quiet)
-        : ConsumerFactory(Context, std::move(BaseFS)), Quiet(Quiet) {}
+        : ConsumerFactory(Context, std::move(BaseFS), Quiet), Quiet(Quiet) {}
     std::unique_ptr<FrontendAction> create() override {
       return std::make_unique<Action>(&ConsumerFactory);
     }

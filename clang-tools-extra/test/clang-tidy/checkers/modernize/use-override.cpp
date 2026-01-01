@@ -1,5 +1,8 @@
 // RUN: %check_clang_tidy %s modernize-use-override,cppcoreguidelines-explicit-virtual-functions %t -- -- -fexceptions
 
+// CHECK-MESSAGES: warning: found alias checks: 'modernize-use-override' is an alias of 'cppcoreguidelines-explicit-virtual-functions' [clang-tidy-config]
+// CHECK-MESSAGES: note: please disable the alias check to avoid running duplicate checks
+
 #define ABSTRACT = 0
 
 #define OVERRIDE override

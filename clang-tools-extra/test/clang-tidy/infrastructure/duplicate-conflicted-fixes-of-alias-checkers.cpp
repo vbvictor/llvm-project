@@ -3,6 +3,9 @@
 //// RUN:         cppcoreguidelines-pro-type-member-init.UseAssignment: true, \
 //// RUN:     }}'
 
+// CHECK-MESSAGES: warning: found alias checks: 'hicpp-member-init' is an alias of 'cppcoreguidelines-pro-type-member-init', 'modernize-use-emplace' is an alias of 'hicpp-use-emplace' [clang-tidy-config]
+// CHECK-MESSAGES: note: please disable the alias check to avoid running duplicate checks
+
 class Foo {
 public:
   Foo() : _num1(0)
