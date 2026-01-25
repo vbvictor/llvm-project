@@ -1016,3 +1016,27 @@ void valid(int i) {
   T arr1[] = {1, 2, 3};
 }
 } // namespace gh132931_false_positive
+
+struct ConstOverloadDelegating {
+  int get() { return value; }
+  int get() const { return const_cast<ConstOverloadDelegating *>(this)->get(); }
+  int value;
+};
+
+void positive_const_overload_delegating() {
+  ConstOverloadDelegating p_local0;
+  // CHECK-MESSAGES: [[@LINE-1]]:3: warning: variable 'p_local0' of type 'ConstOverloadDelegating' can be declared 'const'
+  // CHECK-FIXES: ConstOverloadDelegating const p_local0;
+  p_local0.get();
+}
+
+struct ConstOverloadDifferent {
+  int get() { return value++; }
+  int get() const { return value; }
+  int value;
+};
+
+void negative_const_overload_not_delegating() {
+  ConstOverloadDifferent np_local0;
+  np_local0.get();
+}

@@ -142,6 +142,10 @@ Changes in existing checks
   - Added support for analyzing function parameters with the `AnalyzeParameters`
     option.
 
+  - Added detection of variables that can be declared ``const`` by detecting
+    non-const methods that have const overloads delegating to them via
+    ``const_cast``.
+
 - Improved :doc:`modernize-use-std-format
   <clang-tidy/checks/modernize/use-std-format>` check by fixing a crash
   when an argument is part of a macro expansion.
@@ -149,6 +153,10 @@ Changes in existing checks
 - Improved :doc:`modernize-use-using
   <clang-tidy/checks/modernize/use-using>` check by avoiding the generation
   of invalid code for function types with redundant parentheses.
+
+- Improved :doc:`performance-for-range-copy
+  <clang-tidy/checks/performance/for-range-copy>` check by detecting non-const
+  methods that have const overloads delegating to them via ``const_cast``.
 
 - Improved :doc:`performance-move-const-arg
   <clang-tidy/checks/performance/move-const-arg>` check by avoiding false

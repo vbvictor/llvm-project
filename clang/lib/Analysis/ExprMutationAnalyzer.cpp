@@ -209,6 +209,89 @@ AST_MATCHER(CXXMemberCallExpr, isConstCallee) {
   return FPT->isConst();
 }
 
+// Check if the body of a const method is just a delegation to the non-const
+// version via const_cast on 'this',
+// e.g. 'void foo() const { const_cast<T*>(this)->foo(); }'
+static bool
+isConstOverloadDelegatingToNonConst(const CXXMethodDecl *ConstMethod,
+                                    const CXXMethodDecl *NonConstMethod) {
+  if (!ConstMethod || !NonConstMethod)
+    return false;
+
+  const auto *Body = dyn_cast_if_present<CompoundStmt>(ConstMethod->getBody());
+  if (!Body || Body->size() != 1)
+    return false;
+
+  const Stmt *OnlyStmt = *Body->body_begin();
+  assert(OnlyStmt);
+
+  const CXXMemberCallExpr *DelegateCall = nullptr;
+  if (const auto *E = dyn_cast<Expr>(OnlyStmt))
+    DelegateCall = dyn_cast<CXXMemberCallExpr>(E->IgnoreParenImpCasts());
+  else if (const auto *RetStmt = dyn_cast<ReturnStmt>(OnlyStmt))
+    if (const Expr *RetVal = RetStmt->getRetValue())
+      DelegateCall = dyn_cast<CXXMemberCallExpr>(RetVal->IgnoreParenImpCasts());
+
+  if (!DelegateCall)
+    return false;
+
+  // Check that the delegate call is to the same method
+  const CXXMethodDecl *CalledMethod = DelegateCall->getMethodDecl();
+  if (!CalledMethod ||
+      CalledMethod->getCanonicalDecl() != NonConstMethod->getCanonicalDecl())
+    return false;
+
+  const auto *ConstCast = dyn_cast_if_present<CXXConstCastExpr>(
+      DelegateCall->getImplicitObjectArgument()->IgnoreParenImpCasts());
+  if (!ConstCast)
+    return false;
+
+  if (!dyn_cast<CXXThisExpr>(ConstCast->getSubExpr()->IgnoreParenImpCasts()))
+    return false;
+
+  return true;
+}
+
+// Check if a non-const member call has a const overload that simply delegates
+// to the non-const version via const_cast. In such cases, calling the non-const
+// method is effectively equivalent to calling the const one.
+AST_MATCHER(CXXMemberCallExpr, hasConstOverloadDelegating) {
+  const CXXMethodDecl *Method = Node.getMethodDecl();
+  if (!Method || Method->isConst())
+    return false;
+
+  if (Method->isDependentContext() || Method->isTemplated())
+    return false;
+
+  const CXXRecordDecl *Class = Method->getParent();
+  if (!Class || Class->isDependentType() || !Class->isCompleteDefinition())
+    return false;
+
+  // Look for a const overload with the same name
+  for (const CXXMethodDecl *Candidate : Class->methods()) {
+    if (Candidate == Method || Candidate->isTemplated() ||
+        !Candidate->doesThisDeclarationHaveABody() || !Candidate->isConst() ||
+        Candidate->getDeclName() != Method->getDeclName() ||
+        Candidate->getNumParams() != Method->getNumParams())
+      continue;
+
+    bool ParamsMatch = llvm::all_of_zip(
+        Method->parameters(), Candidate->parameters(),
+        [](const ParmVarDecl *Current, const ParmVarDecl *Candidate) {
+          const QualType TypeCurrent = Current->getType();
+          const QualType TypeCandidate = Candidate->getType();
+          return !TypeCurrent->isDependentType() &&
+                 !TypeCandidate->isDependentType() &&
+                 TypeCurrent.getCanonicalType() ==
+                     TypeCandidate.getCanonicalType();
+        });
+    if (ParamsMatch && isConstOverloadDelegatingToNonConst(Candidate, Method))
+      return true;
+  }
+
+  return false;
+}
+
 AST_MATCHER_P(GenericSelectionExpr, hasControllingExpr,
               ast_matchers::internal::Matcher<Expr>, InnerMatcher) {
   if (Node.isTypePredicate())
@@ -404,7 +487,9 @@ ExprMutationAnalyzer::Analyzer::findDirectMutation(const Expr *Exp) {
   const auto NonConstMethod = cxxMethodDecl(unless(isConst()));
 
   const auto AsNonConstThis = expr(anyOf(
-      cxxMemberCallExpr(on(canResolveToExpr(Exp)), unless(isConstCallee())),
+      cxxMemberCallExpr(
+          on(canResolveToExpr(Exp)),
+          unless(anyOf(isConstCallee(), hasConstOverloadDelegating()))),
       cxxOperatorCallExpr(callee(NonConstMethod),
                           hasArgument(0, canResolveToExpr(Exp))),
       // In case of a templated type, calling overloaded operators is not
@@ -746,11 +831,13 @@ ExprMutationAnalyzer::Analyzer::findPointeeValueMutation(const Expr *Exp) {
 const Stmt *
 ExprMutationAnalyzer::Analyzer::findPointeeMemberMutation(const Expr *Exp) {
   const Stmt *MemberCallExpr = selectFirst<Stmt>(
-      "stmt", match(stmt(forEachDescendant(
-                        cxxMemberCallExpr(on(canResolveToExprPointee(Exp)),
-                                          unless(isConstCallee()))
-                            .bind("stmt"))),
-                    Stm, Context));
+      "stmt",
+      match(stmt(forEachDescendant(
+                cxxMemberCallExpr(on(canResolveToExprPointee(Exp)),
+                                  unless(anyOf(isConstCallee(),
+                                               hasConstOverloadDelegating())))
+                    .bind("stmt"))),
+            Stm, Context));
   if (MemberCallExpr)
     return MemberCallExpr;
   const auto Matches = match(

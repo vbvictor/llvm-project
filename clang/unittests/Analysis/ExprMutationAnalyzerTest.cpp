@@ -210,8 +210,8 @@ TEST_P(AssignmentTest, AssignmentModifies) {
 }
 
 INSTANTIATE_TEST_SUITE_P(AllAssignmentOperators, AssignmentTest,
-                        Values("=", "+=", "-=", "*=", "/=", "%=", "&=", "|=",
-                               "^=", "<<=", ">>=") );
+                         Values("=", "+=", "-=", "*=", "/=", "%=", "&=", "|=",
+                                "^=", "<<=", ">>="));
 
 TEST(ExprMutationAnalyzerTest, AssignmentConditionalWithInheritance) {
   const auto AST = buildASTFromCode("struct Base {void nonconst(); };"
@@ -237,8 +237,8 @@ TEST_P(IncDecTest, IncDecModifies) {
 }
 
 INSTANTIATE_TEST_SUITE_P(AllIncDecOperators, IncDecTest,
-                        Values("++x", "--x", "x++", "x--", "++(x)", "--(x)",
-                               "(x)++", "(x)--") );
+                         Values("++x", "--x", "x++", "x--", "++(x)", "--(x)",
+                                "(x)++", "(x)--"));
 
 // Section: member functions
 
@@ -278,6 +278,191 @@ TEST(ExprMutationAnalyzerTest, ConstMemberFunc) {
   const auto Results =
       match(withEnclosingCompound(declRefTo("x")), AST->getASTContext());
   EXPECT_FALSE(isMutated(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, NonConstMemberFuncWithConstOverloadDelegating) {
+  {
+    const auto AST =
+        buildASTFromCode("void f() {"
+                         "  struct Foo {"
+                         "    void mf() {}"
+                         "    void mf() const { const_cast<Foo*>(this)->mf(); }"
+                         "  };"
+                         "  Foo x; x.mf();"
+                         "}");
+    const auto Results =
+        match(withEnclosingCompound(declRefTo("x")), AST->getASTContext());
+    EXPECT_FALSE(isMutated(Results, AST.get()));
+  }
+  {
+    const auto AST = buildASTFromCode(
+        "void f() {"
+        "  struct Foo {"
+        "    int mf() { return 0; }"
+        "    int mf() const { return const_cast<Foo*>(this)->mf(); }"
+        "  };"
+        "  Foo x; x.mf();"
+        "}");
+    const auto Results =
+        match(withEnclosingCompound(declRefTo("x")), AST->getASTContext());
+    EXPECT_FALSE(isMutated(Results, AST.get()));
+  }
+  {
+    const auto AST =
+        buildASTFromCode("void f() {"
+                         "  struct Foo {"
+                         "    int& get() { return i; }"
+                         "    const int& get() const {"
+                         "      return const_cast<Foo*>(this)->get();"
+                         "    }"
+                         "    int i;"
+                         "  };"
+                         "  Foo x; x.get();"
+                         "}");
+    const auto Results =
+        match(withEnclosingCompound(declRefTo("x")), AST->getASTContext());
+    EXPECT_FALSE(isMutated(Results, AST.get()));
+  }
+
+  // Returning pointer: const overload returns const pointer via const_cast
+  {
+    const auto AST =
+        buildASTFromCode("void f() {"
+                         "  struct Foo {"
+                         "    int* get() { return &i; }"
+                         "    const int* get() const {"
+                         "      return const_cast<Foo*>(this)->get();"
+                         "    }"
+                         "    int i;"
+                         "  };"
+                         "  Foo x; x.get();"
+                         "}");
+    const auto Results =
+        match(withEnclosingCompound(declRefTo("x")), AST->getASTContext());
+    EXPECT_FALSE(isMutated(Results, AST.get()));
+  }
+
+  // With arguments: const overload forwards arguments to non-const version
+  {
+    const auto AST = buildASTFromCode("void f() {"
+                                      "  struct Foo {"
+                                      "    void mf(int a, int b) {}"
+                                      "    void mf(int a, int b) const {"
+                                      "      const_cast<Foo*>(this)->mf(a, b);"
+                                      "    }"
+                                      "  };"
+                                      "  Foo x; x.mf(1, 2);"
+                                      "}");
+    const auto Results =
+        match(withEnclosingCompound(declRefTo("x")), AST->getASTContext());
+    EXPECT_FALSE(isMutated(Results, AST.get()));
+  }
+}
+
+TEST(ExprMutationAnalyzerTest,
+     NonConstMemberFuncWithConstOverloadNotDelegating) {
+  // Cases where const overload exists but doesn't simply delegate - should
+  // still be considered mutation.
+
+  // Const overload has different implementation
+  {
+    const auto AST = buildASTFromCode("void f() {"
+                                      "  struct Foo {"
+                                      "    int mf() { return 1; }"
+                                      "    int mf() const { return 2; }"
+                                      "  };"
+                                      "  Foo x; x.mf();"
+                                      "}");
+    const auto Results =
+        match(withEnclosingCompound(declRefTo("x")), AST->getASTContext());
+    EXPECT_THAT(mutatedBy(Results, AST.get()), ElementsAre("x.mf()"));
+  }
+
+  // Const overload does something extra before delegating
+  {
+    const auto AST = buildASTFromCode(
+        "int g();"
+        "void f() {"
+        "  struct Foo {"
+        "    int mf() { return 0; }"
+        "    int mf() const { g(); return const_cast<Foo*>(this)->mf(); }"
+        "  };"
+        "  Foo x; x.mf();"
+        "}");
+    const auto Results =
+        match(withEnclosingCompound(declRefTo("x")), AST->getASTContext());
+    EXPECT_THAT(mutatedBy(Results, AST.get()), ElementsAre("x.mf()"));
+  }
+
+  // No const overload exists
+  {
+    const auto AST = buildASTFromCode("void f() {"
+                                      "  struct Foo {"
+                                      "    void mf() {}"
+                                      "  };"
+                                      "  Foo x; x.mf();"
+                                      "}");
+    const auto Results =
+        match(withEnclosingCompound(declRefTo("x")), AST->getASTContext());
+    EXPECT_THAT(mutatedBy(Results, AST.get()), ElementsAre("x.mf()"));
+  }
+
+  // Const overload declaration only, no body to analyze
+  {
+    const auto AST = buildASTFromCode("struct Foo {"
+                                      "  void mf();"
+                                      "  void mf() const;"
+                                      "};"
+                                      "void f() { Foo x; x.mf(); }");
+    const auto Results =
+        match(withEnclosingCompound(declRefTo("x")), AST->getASTContext());
+    EXPECT_THAT(mutatedBy(Results, AST.get()), ElementsAre("x.mf()"));
+  }
+
+  // Template class instantiation - conservatively treated as mutation
+  // because we skip template specializations
+  {
+    const auto AST = buildASTFromCode(
+        "template <typename T>"
+        "struct Foo {"
+        "  T get() { return val; }"
+        "  T get() const { return const_cast<Foo*>(this)->get(); }"
+        "  T val;"
+        "};"
+        "void f() { Foo<int> x; x.get(); }");
+    const auto Results =
+        match(withEnclosingCompound(declRefTo("x")), AST->getASTContext());
+    EXPECT_THAT(mutatedBy(Results, AST.get()), ElementsAre("x.get()"));
+  }
+
+  // Templated method - conservatively treated as mutation
+  {
+    const auto AST =
+        buildASTFromCode("struct Foo {"
+                         "  template <typename T> T get() { return T{}; }"
+                         "  template <typename T> T get() const {"
+                         "    return const_cast<Foo*>(this)->get<T>();"
+                         "  }"
+                         "};"
+                         "void f() { Foo x; x.get<int>(); }");
+    const auto Results =
+        match(withEnclosingCompound(declRefTo("x")), AST->getASTContext());
+    EXPECT_THAT(mutatedBy(Results, AST.get()), ElementsAre("x.get<int>()"));
+  }
+
+  // Dependent context - conservatively treated as mutation
+  {
+    const auto AST = buildASTFromCodeWithArgs(
+        "struct Foo {"
+        "  void mf() {}"
+        "  void mf() const { const_cast<Foo*>(this)->mf(); }"
+        "};"
+        "template <typename T> void f() { T x; x.mf(); }",
+        {"-fno-delayed-template-parsing"});
+    const auto Results =
+        match(withEnclosingCompound(declRefTo("x")), AST->getASTContext());
+    EXPECT_THAT(mutatedBy(Results, AST.get()), ElementsAre("x.mf()"));
+  }
 }
 
 TEST(ExprMutationAnalyzerTest, TypeDependentMemberCall) {

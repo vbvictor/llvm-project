@@ -350,3 +350,39 @@ void negativeNonConstMemberExpr() {
   }
 }
 
+struct ConstOverloadDelegating {
+  ConstOverloadDelegating() {}
+  ConstOverloadDelegating(const ConstOverloadDelegating &) {}
+  ~ConstOverloadDelegating() {}
+
+  int get() { return value; }
+  int get() const { return const_cast<ConstOverloadDelegating *>(this)->get(); }
+
+  int value;
+};
+
+void positiveConstOverloadDelegating() {
+  for (auto M : View<Iterator<ConstOverloadDelegating>>()) {
+    // CHECK-MESSAGES: [[@LINE-1]]:13: warning: loop variable is copied but only used as const reference;
+    // CHECK-FIXES: for (const auto& M : View<Iterator<ConstOverloadDelegating>>()) {
+    M.get();
+  }
+}
+
+struct ConstOverloadDifferent {
+  ConstOverloadDifferent() {}
+  ConstOverloadDifferent(const ConstOverloadDifferent &) {}
+  ~ConstOverloadDifferent() {}
+
+  int get() { return value++; }
+  int get() const { return value; }
+
+  int value;
+};
+
+void negativeConstOverloadNotDelegating() {
+  for (auto M : View<Iterator<ConstOverloadDifferent>>()) {
+    M.get();
+  }
+}
+
