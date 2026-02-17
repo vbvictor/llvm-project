@@ -349,6 +349,14 @@ all of the checks.
 )"),
                                    cl::init(false), cl::cat(ClangTidyCategory));
 
+static cl::opt<bool> VerifyNoLints("verify-nolints", desc(R"(
+Check that each NOLINT comment actually suppresses
+a diagnostic. If a NOLINT comment does not silence
+any warning, a 'clang-tidy-nolint' warning will be
+emitted.
+)"),
+                                   cl::init(false), cl::cat(ClangTidyCategory));
+
 static cl::opt<bool> ExperimentalCustomChecks("experimental-custom-checks",
                                               desc(R"(
 Enable experimental clang-query based
@@ -741,7 +749,7 @@ int clangTidyMain(int argc, const char **argv) {
 
   ClangTidyContext Context(
       std::move(OwningOptionsProvider), AllowEnablingAnalyzerAlphaCheckers,
-      EnableModuleHeadersParsing, ExperimentalCustomChecks);
+      EnableModuleHeadersParsing, ExperimentalCustomChecks, VerifyNoLints);
   std::vector<ClangTidyError> Errors =
       runClangTidy(Context, OptionsParser->getCompilations(), PathList, BaseFS,
                    FixNotes, EnableCheckProfile, ProfilePrefix, Quiet);

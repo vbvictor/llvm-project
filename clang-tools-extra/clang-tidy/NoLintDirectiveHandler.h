@@ -12,6 +12,7 @@
 #include "clang/Basic/Diagnostic.h"
 #include "llvm/ADT/StringRef.h"
 #include <memory>
+#include <vector>
 
 namespace clang::tooling {
 struct Diagnostic;
@@ -29,13 +30,18 @@ namespace clang::tidy {
 /// have to be repeatedly parsed each time a new diagnostic is raised.
 class NoLintDirectiveHandler {
 public:
-  NoLintDirectiveHandler();
+  /// \param VerifyNoLints When set, tracks unused NOLINT comments.
+  NoLintDirectiveHandler(bool VerifyNoLints = false);
   ~NoLintDirectiveHandler();
 
   bool shouldSuppress(DiagnosticsEngine::Level DiagLevel,
                       const Diagnostic &Diag, llvm::StringRef DiagName,
                       llvm::SmallVectorImpl<tooling::Diagnostic> &NoLintErrors,
                       bool AllowIO, bool EnableNoLintBlocks);
+
+  /// Returns diagnostics for NOLINT comments that didn't suppress anything.
+  /// Requires VerifyNoLints to be enabled.
+  std::vector<tooling::Diagnostic> collectUnusedNoLints();
 
 private:
   class Impl;

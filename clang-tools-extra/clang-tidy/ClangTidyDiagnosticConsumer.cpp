@@ -161,17 +161,22 @@ ClangTidyError::ClangTidyError(StringRef CheckName,
 ClangTidyContext::ClangTidyContext(
     std::unique_ptr<ClangTidyOptionsProvider> OptionsProvider,
     bool AllowEnablingAnalyzerAlphaCheckers, bool EnableModuleHeadersParsing,
-    bool ExperimentalCustomChecks)
+    bool ExperimentalCustomChecks, bool VerifyNoLints)
     : OptionsProvider(std::move(OptionsProvider)),
       AllowEnablingAnalyzerAlphaCheckers(AllowEnablingAnalyzerAlphaCheckers),
       EnableModuleHeadersParsing(EnableModuleHeadersParsing),
-      ExperimentalCustomChecks(ExperimentalCustomChecks) {
+      ExperimentalCustomChecks(ExperimentalCustomChecks),
+      NoLintHandler(VerifyNoLints) {
   // Before the first translation unit we can get errors related to command-line
   // parsing, use dummy string for the file name in this case.
   setCurrentFile("dummy");
 }
 
 ClangTidyContext::~ClangTidyContext() = default;
+
+std::vector<tooling::Diagnostic> ClangTidyContext::collectUnusedNoLints() {
+  return NoLintHandler.collectUnusedNoLints();
+}
 
 DiagnosticBuilder ClangTidyContext::diag(
     StringRef CheckName, SourceLocation Loc, StringRef Description,
@@ -782,6 +787,15 @@ struct EqualClangTidyError {
 
 std::vector<ClangTidyError> ClangTidyDiagnosticConsumer::take() {
   finalizeLastError();
+
+  // Collect warnings for unused NOLINT comments (--verify-nolints).
+  for (const tooling::Diagnostic &Diag : Context.collectUnusedNoLints()) {
+    ClangTidyError Error(Diag.DiagnosticName, ClangTidyError::Warning,
+                         Context.getCurrentBuildDirectory(),
+                         /*IsWarningAsError=*/false);
+    Error.Message = Diag.Message;
+    Errors.push_back(std::move(Error));
+  }
 
   llvm::stable_sort(Errors, LessClangTidyError());
   Errors.erase(llvm::unique(Errors, EqualClangTidyError()), Errors.end());

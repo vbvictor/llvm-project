@@ -70,12 +70,14 @@ struct ClangTidyStats {
 class ClangTidyContext {
 public:
   ClangTidyContext(std::unique_ptr<ClangTidyOptionsProvider> OptionsProvider)
-      : ClangTidyContext(std::move(OptionsProvider), false, false, false) {}
+      : ClangTidyContext(std::move(OptionsProvider), false, false, false,
+                         false) {}
   /// Initializes \c ClangTidyContext instance.
   ClangTidyContext(std::unique_ptr<ClangTidyOptionsProvider> OptionsProvider,
                    bool AllowEnablingAnalyzerAlphaCheckers,
                    bool EnableModuleHeadersParsing,
-                   bool ExperimentalCustomChecks);
+                   bool ExperimentalCustomChecks,
+                   bool VerifyNoLints = false);
   /// Sets the DiagnosticsEngine that diag() will emit diagnostics to.
   // FIXME: this is required initialization, and should be a constructor param.
   // Fix the context -> diag engine -> consumer -> context initialization cycle.
@@ -213,6 +215,9 @@ public:
   // whether experimental custom checks can be enabled.
   // enabled with `--experimental-custom-checks`
   bool canExperimentalCustomChecks() const { return ExperimentalCustomChecks; }
+
+  /// Collect diagnostics for NOLINT comments that did not suppress any warning.
+  std::vector<tooling::Diagnostic> collectUnusedNoLints();
 
   void setSelfContainedDiags(bool Value) { SelfContainedDiags = Value; }
 

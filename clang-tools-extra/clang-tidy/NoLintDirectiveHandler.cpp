@@ -104,6 +104,9 @@ public:
   // Whether this NOLINT applies to the provided check.
   bool suppresses(StringRef Check) const { return ChecksGlob->contains(Check); }
 
+  // Whether this token suppressed a diagnostic (for --verify-nolints).
+  bool Used = false;
+
 private:
   std::optional<std::string> Checks;
 };
@@ -170,6 +173,11 @@ public:
            ChecksGlob->contains(DiagName);
   }
 
+  size_t getBeginPos() const { return BeginPos; }
+
+  // Whether this block suppressed a diagnostic (for --verify-nolints).
+  bool Used = false;
+
 private:
   size_t BeginPos;
   size_t EndPos;
@@ -177,6 +185,21 @@ private:
 };
 
 } // namespace
+
+// Return the human-readable name of a NOLINT type.
+static StringRef noLintTypeName(NoLintType Type) {
+  switch (Type) {
+  case NoLintType::NoLint:
+    return "NOLINT";
+  case NoLintType::NoLintNextLine:
+    return "NOLINTNEXTLINE";
+  case NoLintType::NoLintBegin:
+    return "NOLINTBEGIN";
+  case NoLintType::NoLintEnd:
+    return "NOLINTEND";
+  }
+  llvm_unreachable("Unknown NoLintType");
+}
 
 // Construct a [clang-tidy-nolint] diagnostic to do with the unmatched
 // NOLINT(BEGIN/END) pair.
@@ -195,6 +218,20 @@ static tooling::Diagnostic makeNoLintError(const SourceManager &SrcMgr,
   const SourceLocation Loc = SrcMgr.getComposedLoc(File, NoLint.Pos);
   Error.Message = tooling::DiagnosticMessage(Message, SrcMgr, Loc);
   return Error;
+}
+
+// Construct a [clang-tidy-nolint] warning for a NOLINT that didn't suppress
+// anything. Uses file path + offset (no SourceManager needed).
+static tooling::Diagnostic makeUnusedNoLintWarning(StringRef FileName,
+                                                   StringRef TypeName,
+                                                   size_t Offset) {
+  tooling::Diagnostic Diag;
+  Diag.DiagLevel = tooling::Diagnostic::Warning;
+  Diag.DiagnosticName = "clang-tidy-nolint";
+  Diag.Message.Message = ("unused '" + TypeName + "' comment").str();
+  Diag.Message.FilePath = FileName.str();
+  Diag.Message.FileOffset = Offset;
+  return Diag;
 }
 
 // Match NOLINTBEGINs with their corresponding NOLINTENDs and move them into
@@ -240,10 +277,14 @@ formNoLintBlocks(SmallVector<NoLintToken> NoLints, const SourceManager &SrcMgr,
 
 class NoLintDirectiveHandler::Impl {
 public:
+  Impl(bool VerifyNoLints) : VerifyNoLints(VerifyNoLints) {}
+
   bool shouldSuppress(DiagnosticsEngine::Level DiagLevel,
                       const Diagnostic &Diag, StringRef DiagName,
                       SmallVectorImpl<tooling::Diagnostic> &NoLintErrors,
                       bool AllowIO, bool EnableNoLintBlocks);
+
+  std::vector<tooling::Diagnostic> collectUnusedNoLints();
 
 private:
   bool diagHasNoLintInMacro(const Diagnostic &Diag, StringRef DiagName,
@@ -259,7 +300,13 @@ private:
                      FileID File, StringRef Buffer,
                      SmallVectorImpl<tooling::Diagnostic> &NoLintErrors);
 
-  llvm::StringMap<SmallVector<NoLintBlockToken>> Cache;
+  struct FileCache {
+    SmallVector<NoLintToken> LineTokens;
+    SmallVector<NoLintBlockToken> Blocks;
+  };
+
+  llvm::StringMap<FileCache> Cache;
+  bool VerifyNoLints;
 };
 
 bool NoLintDirectiveHandler::Impl::shouldSuppress(
@@ -355,8 +402,48 @@ bool NoLintDirectiveHandler::Impl::diagHasNoLint(
   if (!Buffer)
     return false;
 
-  // Check if there's a NOLINT on this line.
   auto ThisLine = getLineStartAndEnd(*Buffer, Pos);
+
+  // When verifying NOLINTs, eagerly cache all tokens for the file so we can
+  // track which ones actually suppressed a diagnostic.
+  if (VerifyNoLints) {
+    if (!Cache.contains(*FileName))
+      generateCache(SrcMgr, *FileName, File, *Buffer, NoLintErrors);
+
+    auto &Data = Cache[*FileName];
+
+    // Check line-level tokens (NOLINT on current line, NOLINTNEXTLINE on
+    // previous line).
+    for (NoLintToken &Token : Data.LineTokens) {
+      if (Token.Type == NoLintType::NoLint &&
+          Token.Pos >= ThisLine.first && Token.Pos < ThisLine.second &&
+          Token.suppresses(DiagName)) {
+        Token.Used = true;
+        return true;
+      }
+      if (Token.Type == NoLintType::NoLintNextLine && ThisLine.first > 0) {
+        auto PrevLine = getLineStartAndEnd(*Buffer, ThisLine.first - 1);
+        if (Token.Pos >= PrevLine.first && Token.Pos < PrevLine.second &&
+            Token.suppresses(DiagName)) {
+          Token.Used = true;
+          return true;
+        }
+      }
+    }
+
+    // Check blocks.
+    if (EnableNoLintBlocks) {
+      for (NoLintBlockToken &Block : Data.Blocks) {
+        if (Block.suppresses(Pos, DiagName)) {
+          Block.Used = true;
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  // Check if there's a NOLINT on this line.
   if (lineHasNoLint(*Buffer, ThisLine, NoLintType::NoLint, DiagName))
     return true;
 
@@ -376,25 +463,57 @@ bool NoLintDirectiveHandler::Impl::diagHasNoLint(
     // Warning: heavy operation - need to read entire file.
     generateCache(SrcMgr, *FileName, File, *Buffer, NoLintErrors);
 
-  return withinNoLintBlock(Cache[*FileName], Pos, DiagName);
+  return withinNoLintBlock(Cache[*FileName].Blocks, Pos, DiagName);
 }
 
-// Find all NOLINT(BEGIN/END) blocks in a file and store in the cache.
+// Parse all NOLINTs in a file and store them in the cache, separating
+// line-level tokens from BEGIN/END block tokens.
 void NoLintDirectiveHandler::Impl::generateCache(
     const SourceManager &SrcMgr, StringRef FileName, FileID File,
     StringRef Buffer, SmallVectorImpl<tooling::Diagnostic> &NoLintErrors) {
-  // Read entire file to get all NOLINTs and match each BEGIN with its
-  // corresponding END, raising errors for any BEGIN or END that is unmatched.
-  Cache.try_emplace(FileName, formNoLintBlocks(getNoLints(Buffer), SrcMgr, File,
-                                               NoLintErrors));
+  SmallVector<NoLintToken> AllTokens = getNoLints(Buffer);
+
+  FileCache Data;
+  SmallVector<NoLintToken> BeginEndTokens;
+  for (NoLintToken &T : AllTokens) {
+    if (T.Type == NoLintType::NoLint || T.Type == NoLintType::NoLintNextLine)
+      Data.LineTokens.push_back(std::move(T));
+    else
+      BeginEndTokens.push_back(std::move(T));
+  }
+
+  Data.Blocks = formNoLintBlocks(std::move(BeginEndTokens), SrcMgr, File,
+                                 NoLintErrors);
+  Cache.try_emplace(FileName, std::move(Data));
+}
+
+std::vector<tooling::Diagnostic>
+NoLintDirectiveHandler::Impl::collectUnusedNoLints() {
+  std::vector<tooling::Diagnostic> Unused;
+  if (!VerifyNoLints)
+    return Unused;
+
+  for (const auto &[FileName, Data] : Cache) {
+    for (const NoLintToken &Token : Data.LineTokens) {
+      if (!Token.Used)
+        Unused.push_back(makeUnusedNoLintWarning(
+            FileName, noLintTypeName(Token.Type), Token.Pos));
+    }
+    for (const NoLintBlockToken &Block : Data.Blocks) {
+      if (!Block.Used)
+        Unused.push_back(
+            makeUnusedNoLintWarning(FileName, "NOLINTBEGIN", Block.getBeginPos()));
+    }
+  }
+  return Unused;
 }
 
 //===----------------------------------------------------------------------===//
 // NoLintDirectiveHandler
 //===----------------------------------------------------------------------===//
 
-NoLintDirectiveHandler::NoLintDirectiveHandler()
-    : PImpl(std::make_unique<Impl>()) {}
+NoLintDirectiveHandler::NoLintDirectiveHandler(bool VerifyNoLints)
+    : PImpl(std::make_unique<Impl>(VerifyNoLints)) {}
 
 NoLintDirectiveHandler::~NoLintDirectiveHandler() = default;
 
@@ -404,6 +523,11 @@ bool NoLintDirectiveHandler::shouldSuppress(
     bool AllowIO, bool EnableNoLintBlocks) {
   return PImpl->shouldSuppress(DiagLevel, Diag, DiagName, NoLintErrors, AllowIO,
                                EnableNoLintBlocks);
+}
+
+std::vector<tooling::Diagnostic>
+NoLintDirectiveHandler::collectUnusedNoLints() {
+  return PImpl->collectUnusedNoLints();
 }
 
 } // namespace clang::tidy

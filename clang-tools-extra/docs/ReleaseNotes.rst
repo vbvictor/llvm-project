@@ -255,6 +255,11 @@ Removed checks
 Miscellaneous
 ^^^^^^^^^^^^^
 
+- Added ``--verify-nolints`` command-line option to :program:`clang-tidy` that
+  warns on ``NOLINT``, ``NOLINTNEXTLINE``, and ``NOLINTBEGIN`` comments that
+  do not suppress any diagnostic. These warnings use the ``clang-tidy-nolint``
+  diagnostic name.
+
 Improvements to include-fixer
 -----------------------------
 
