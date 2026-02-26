@@ -3,13 +3,12 @@
 
 // For size_t
 #include <string.h>
+#include <initializer_list>
 
 typedef unsigned __INT16_TYPE__ char16;
 typedef unsigned __INT32_TYPE__ char32;
 
 namespace std {
-template <typename T>
-class allocator {};
 
 template <typename T>
 class char_traits {};
@@ -26,7 +25,8 @@ struct basic_string {
   basic_string(const C *p, const A &a = A());
   basic_string(const C *p, size_type count);
   basic_string(const C *b, const C *e);
-  basic_string(size_t, C);
+  basic_string(size_t, C, const A & = A());
+  basic_string(initializer_list<C>);
   operator basic_string_view<C, T>() const;
 
   ~basic_string();
@@ -182,6 +182,7 @@ bool operator!=(const char*, const std::string_view&);
 
 size_t strlen(const char* str);
 
+#if __cplusplus >= 201402L
 namespace literals {
 namespace string_literals {
   string operator""s(const char *, size_t);
@@ -190,6 +191,7 @@ namespace string_view_literals {
   string_view operator""sv(const char *, size_t);
 }
 }
+#endif
 }
 
 #endif // _STRING_

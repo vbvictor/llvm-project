@@ -121,6 +121,12 @@ New checks
   ``llvm::to_vector(llvm::make_filter_range(...))`` that can be replaced with
   ``llvm::map_to_vector`` and ``llvm::filter_to_vector``.
 
+- New :doc:`misc-use-braced-initialization
+  <clang-tidy/checks/misc/use-braced-initialization>` check.
+
+  Suggests replacing parenthesized initialization with braced
+  initialization for variable declarations.
+
 - New :doc:`modernize-use-string-view
   <clang-tidy/checks/modernize/use-string-view>` check.
 
@@ -147,6 +153,11 @@ New checks
 
 New check aliases
 ^^^^^^^^^^^^^^^^^
+
+- New alias :doc:`cppcoreguidelines-use-braced-initialization
+  <clang-tidy/checks/cppcoreguidelines/use-braced-initialization>` to
+  :doc:`misc-use-braced-initialization
+  <clang-tidy/checks/misc/use-braced-initialization>` was added.
 
 Changes in existing checks
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
