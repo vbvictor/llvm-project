@@ -161,11 +161,12 @@ ClangTidyError::ClangTidyError(StringRef CheckName,
 ClangTidyContext::ClangTidyContext(
     std::unique_ptr<ClangTidyOptionsProvider> OptionsProvider,
     bool AllowEnablingAnalyzerAlphaCheckers, bool EnableModuleHeadersParsing,
-    bool ExperimentalCustomChecks)
+    bool ExperimentalCustomChecks, bool AllowClangDiagnosticErrors)
     : OptionsProvider(std::move(OptionsProvider)),
       AllowEnablingAnalyzerAlphaCheckers(AllowEnablingAnalyzerAlphaCheckers),
       EnableModuleHeadersParsing(EnableModuleHeadersParsing),
-      ExperimentalCustomChecks(ExperimentalCustomChecks) {
+      ExperimentalCustomChecks(ExperimentalCustomChecks),
+      AllowClangDiagnosticErrors(AllowClangDiagnosticErrors) {
   // Before the first translation unit we can get errors related to command-line
   // parsing, use dummy string for the file name in this case.
   setCurrentFile("dummy");
@@ -418,6 +419,7 @@ void ClangTidyDiagnosticConsumer::HandleDiagnostic(
       case DiagnosticsEngine::Error:
       case DiagnosticsEngine::Fatal:
         CheckName = "clang-diagnostic-error";
+        Context.HasCompilationErrors = true;
         break;
       case DiagnosticsEngine::Warning:
         CheckName = "clang-diagnostic-warning";

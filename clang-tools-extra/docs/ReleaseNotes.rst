@@ -111,6 +111,12 @@ Improvements to clang-query
 Improvements to clang-tidy
 --------------------------
 
+- Added :program:`clang-tidy` flag ``--allow-clang-diagnostic-errors`` to
+  allow running checks even when the translation unit has compiler errors.
+  By default, clang-tidy now skips checks for translation units with
+  ``clang-diagnostic-error`` diagnostics to prevent crashes and misleading
+  results from an incomplete AST.
+
 - Improved :program:`check_clang_tidy.py` script by adding the `-check-header`
   argument to simplify testing of header files. This argument automatically
   manages the creation of temporary header files and ensures that diagnostics

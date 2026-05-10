@@ -348,6 +348,16 @@ all of the checks.
 )"),
                                    cl::init(false), cl::cat(ClangTidyCategory));
 
+static cl::opt<bool> AllowClangDiagnosticErrors(
+    "allow-clang-diagnostic-errors", desc(R"(
+Allow running checks on a translation unit
+even when compiler errors are present. By
+default, clang-tidy skips checks for broken
+translation units to avoid crashes and
+misleading diagnostics.
+)"),
+    cl::init(false), cl::cat(ClangTidyCategory));
+
 static cl::opt<bool> ExperimentalCustomChecks("experimental-custom-checks",
                                               desc(R"(
 Enable experimental clang-query based
@@ -738,9 +748,12 @@ int clangTidyMain(int argc, const char **argv) {
   llvm::InitializeAllTargetMCs();
   llvm::InitializeAllAsmParsers();
 
+  // --fix-errors implies running checks even on broken TUs because the user
+  // explicitly opted in to processing files with compiler errors.
   ClangTidyContext Context(
       std::move(OwningOptionsProvider), AllowEnablingAnalyzerAlphaCheckers,
-      EnableModuleHeadersParsing, ExperimentalCustomChecks);
+      EnableModuleHeadersParsing, ExperimentalCustomChecks,
+      AllowClangDiagnosticErrors || FixErrors);
   std::vector<ClangTidyError> Errors =
       runClangTidy(Context, OptionsParser->getCompilations(), PathList, BaseFS,
                    FixNotes, EnableCheckProfile, ProfilePrefix, Quiet);

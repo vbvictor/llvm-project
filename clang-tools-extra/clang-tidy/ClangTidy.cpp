@@ -330,10 +330,18 @@ public:
   ClangTidyASTConsumer(std::vector<std::unique_ptr<ASTConsumer>> Consumers,
                        std::unique_ptr<ClangTidyProfiling> Profiling,
                        std::unique_ptr<ast_matchers::MatchFinder> Finder,
-                       std::vector<std::unique_ptr<ClangTidyCheck>> Checks)
+                       std::vector<std::unique_ptr<ClangTidyCheck>> Checks,
+                       ClangTidyContext &Context)
       : MultiplexConsumer(std::move(Consumers)),
         Profiling(std::move(Profiling)), Finder(std::move(Finder)),
-        Checks(std::move(Checks)) {}
+        Checks(std::move(Checks)), Context(Context) {}
+
+  void HandleTranslationUnit(ASTContext &Ctx) override {
+    if (!Context.allowClangDiagnosticErrors() &&
+        Context.hasCompilationErrors())
+      return;
+    MultiplexConsumer::HandleTranslationUnit(Ctx);
+  }
 
 private:
   // Destructor order matters! Profiling must be destructed last.
@@ -341,6 +349,7 @@ private:
   std::unique_ptr<ClangTidyProfiling> Profiling;
   std::unique_ptr<ast_matchers::MatchFinder> Finder;
   std::vector<std::unique_ptr<ClangTidyCheck>> Checks;
+  ClangTidyContext &Context;
   void anchor() override {}
 };
 
@@ -487,7 +496,7 @@ ClangTidyASTConsumerFactory::createASTConsumer(CompilerInstance &Compiler,
 #endif // CLANG_TIDY_ENABLE_STATIC_ANALYZER
   return std::make_unique<ClangTidyASTConsumer>(
       std::move(Consumers), std::move(Profiling), std::move(Finder),
-      std::move(Checks));
+      std::move(Checks), Context);
 }
 
 std::vector<std::string> ClangTidyASTConsumerFactory::getCheckNames() {

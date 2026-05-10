@@ -139,6 +139,11 @@ An overview of all the command-line options:
 
   clang-tidy options:
 
+    --allow-clang-diagnostic-errors  - Allow running checks on a translation unit
+                                       even when compiler errors are present. By
+                                       default, clang-tidy skips checks for broken
+                                       translation units to avoid crashes and
+                                       misleading diagnostics.
     --allow-no-checks                - Allow empty enabled checks. This suppresses
                                        the "no checks enabled" error when disabling
                                        all of the checks.
