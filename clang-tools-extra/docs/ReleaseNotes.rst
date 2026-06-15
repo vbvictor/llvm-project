@@ -540,6 +540,15 @@ Changes in existing checks
   - Added support for analyzing function parameters with the `AnalyzeParameters`
     option.
 
+  - Added the `AllowConstOverloads` option (default `true`) that treats a
+    call to a non-const member function as non-mutating if the same class
+    declares a value-returning const-qualified overload with the same name
+    and parameter types (for example ``int get()`` paired with
+    ``int get() const``). Reference- and pointer-returning pairs are
+    intentionally not treated as paired to avoid false positives caused by
+    escape paths such as ``c.get() = x;`` or ``opt->setX(...)``. Set the
+    option to `false` to restore the previous behavior.
+
   - Fixed false positive where an array of pointers to ``const`` was
     incorrectly diagnosed as allowing the pointee to be made ``const``.
 
@@ -672,6 +681,15 @@ Changes in existing checks
   - Exclude ``enum`` in ``extern "C"`` blocks.
 
   - Improved the ignore list to correctly handle ``typedef`` and  ``enum``.
+
+- Improved :doc:`performance-for-range-copy
+  <clang-tidy/checks/performance/for-range-copy>` check by adding the
+  `AllowConstOverloads` option (default `true`). When enabled, calls to
+  non-const member functions are treated as non-mutating if the class also
+  declares a value-returning const-qualified overload with the same name
+  and parameter types. Reference- and pointer-returning pairs are
+  intentionally not treated as paired. Set the option to `false` to
+  restore the previous behavior.
 
 - Improved :doc:`performance-inefficient-string-concatenation
   <clang-tidy/checks/performance/inefficient-string-concatenation>` check by

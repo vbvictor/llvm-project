@@ -58,6 +58,16 @@ bool isMutated(const SmallVectorImpl<BoundNodes> &Results, ASTUnit *AST) {
   return ExprMutationAnalyzer(*S, AST->getASTContext()).isMutated(E);
 }
 
+bool isMutatedAllowConstOverloads(const SmallVectorImpl<BoundNodes> &Results,
+                                  ASTUnit *AST) {
+  const auto *const S = selectFirst<Stmt>("stmt", Results);
+  const auto *const E = selectFirst<Expr>("expr", Results);
+  TraversalKindScope RAII(AST->getASTContext(), TK_AsIs);
+  ExprMutationAnalyzer Analyzer(*S, AST->getASTContext());
+  Analyzer.setAllowConstOverloads(true);
+  return Analyzer.isMutated(E);
+}
+
 bool isDeclMutated(const SmallVectorImpl<BoundNodes> &Results, ASTUnit *AST) {
   const auto *const S = selectFirst<Stmt>("stmt", Results);
   const auto *const D = selectFirst<Decl>("decl", Results);
@@ -278,6 +288,241 @@ TEST(ExprMutationAnalyzerTest, ConstMemberFunc) {
   const auto Results =
       match(withEnclosingCompound(declRefTo("x")), AST->getASTContext());
   EXPECT_FALSE(isMutated(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, AllowConstOverloads_ValueReturn) {
+  const auto AST =
+      buildASTFromCode("struct Foo { int get() const; int get(); };"
+                       "void f() { Foo x; x.get(); }");
+  const auto Results =
+      match(withEnclosingCompound(declRefTo("x")), AST->getASTContext());
+  // Without the option, the non-const overload is treated as mutating.
+  EXPECT_TRUE(isMutated(Results, AST.get()));
+  // With the option, the matching const overload makes this non-mutating.
+  EXPECT_FALSE(isMutatedAllowConstOverloads(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, AllowConstOverloads_RefReturnNotPaired) {
+  // `T& get()` / `const T& get() const` is NOT treated as a pair: the
+  // non-const overload's returned reference can be used to mutate the
+  // object (e.g. `c.get() = x;`), an escape path the analyzer otherwise
+  // catches only via the non-const callee proxy.
+  const auto AST =
+      buildASTFromCode("struct Foo { const int &get() const; int &get(); };"
+                       "void f() { Foo x; x.get(); }");
+  const auto Results =
+      match(withEnclosingCompound(declRefTo("x")), AST->getASTContext());
+  EXPECT_TRUE(isMutated(Results, AST.get()));
+  EXPECT_TRUE(isMutatedAllowConstOverloads(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, AllowConstOverloads_PointerReturnNotPaired) {
+  // `T* get()` / `const T* get() const` is NOT treated as a pair: the
+  // non-const overload's returned pointer can be used to mutate the object.
+  const auto AST =
+      buildASTFromCode("struct Foo { const int *get() const; int *get(); };"
+                       "void f() { Foo x; x.get(); }");
+  const auto Results =
+      match(withEnclosingCompound(declRefTo("x")), AST->getASTContext());
+  EXPECT_TRUE(isMutated(Results, AST.get()));
+  EXPECT_TRUE(isMutatedAllowConstOverloads(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, AllowConstOverloads_NoConstOverload) {
+  // Without a matching const overload, the call is still considered mutating
+  // even with the option enabled.
+  const auto AST = buildASTFromCode("struct Foo { int get(); };"
+                                    "void f() { Foo x; x.get(); }");
+  const auto Results =
+      match(withEnclosingCompound(declRefTo("x")), AST->getASTContext());
+  EXPECT_TRUE(isMutated(Results, AST.get()));
+  EXPECT_TRUE(isMutatedAllowConstOverloads(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, AllowConstOverloads_DifferentParams) {
+  // The overloads differ in parameter types: not considered a matching pair.
+  const auto AST =
+      buildASTFromCode("struct Foo { int get(int) const; int get(long); };"
+                       "void f() { Foo x; x.get(0L); }");
+  const auto Results =
+      match(withEnclosingCompound(declRefTo("x")), AST->getASTContext());
+  EXPECT_TRUE(isMutated(Results, AST.get()));
+  EXPECT_TRUE(isMutatedAllowConstOverloads(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, AllowConstOverloads_MatchingParams) {
+  const auto AST =
+      buildASTFromCode("struct Foo { int get(int) const; int get(int); };"
+                       "void f() { Foo x; x.get(0); }");
+  const auto Results =
+      match(withEnclosingCompound(declRefTo("x")), AST->getASTContext());
+  EXPECT_TRUE(isMutated(Results, AST.get()));
+  EXPECT_FALSE(isMutatedAllowConstOverloads(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, AllowConstOverloads_NestedMember) {
+  // Reproducer for the original issue: a non-const overload reached via a
+  // member access on a copied object.
+  const auto AST =
+      buildASTFromCode("struct Inner { int get() const; int get(); };"
+                       "struct Outer { Inner inner; };"
+                       "void f() { Outer p; p.inner.get(); }");
+  const auto Results =
+      match(withEnclosingCompound(declRefTo("p")), AST->getASTContext());
+  EXPECT_TRUE(isMutated(Results, AST.get()));
+  EXPECT_FALSE(isMutatedAllowConstOverloads(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest,
+     AllowConstOverloads_OperatorSubscriptRefVsValue) {
+  // `T& operator[]()` / `T operator[]() const` is NOT a paired overload: the
+  // const version returns by value, so the non-const ref is the only way to
+  // write through `[]`. Treating them as paired would lose a real mutation.
+  const auto AST = buildASTFromCode("struct V {"
+                                    "  int &operator[](int i);"
+                                    "  int operator[](int i) const;"
+                                    "};"
+                                    "void f() { V v; v[0] = 1; }");
+  const auto Results =
+      match(withEnclosingCompound(declRefTo("v")), AST->getASTContext());
+  EXPECT_TRUE(isMutated(Results, AST.get()));
+  EXPECT_TRUE(isMutatedAllowConstOverloads(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest,
+     AllowConstOverloads_OperatorSubscriptRefVsConstRefNotPaired) {
+  // Even with same-pointee references, the non-const overload's `T&` can be
+  // assigned to (`v[0] = 1`), so the pair is intentionally not recognized.
+  const auto AST = buildASTFromCode("struct V {"
+                                    "  int &operator[](int i);"
+                                    "  const int &operator[](int i) const;"
+                                    "};"
+                                    "void f() { V v; v[0] = 1; }");
+  const auto Results =
+      match(withEnclosingCompound(declRefTo("v")), AST->getASTContext());
+  EXPECT_TRUE(isMutated(Results, AST.get()));
+  EXPECT_TRUE(isMutatedAllowConstOverloads(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, AllowConstOverloads_DeletedConstOverload) {
+  // A deleted const overload is not callable; the non-const overload is the
+  // only option, so it must still be considered mutating.
+  const auto AST =
+      buildASTFromCode("struct Foo { int get() const = delete; int get(); };"
+                       "void f() { Foo x; x.get(); }");
+  const auto Results =
+      match(withEnclosingCompound(declRefTo("x")), AST->getASTContext());
+  EXPECT_TRUE(isMutated(Results, AST.get()));
+  EXPECT_TRUE(isMutatedAllowConstOverloads(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, AllowConstOverloads_InheritedConstOverload) {
+  // Lookup intentionally stays in the direct class. Without a `using`
+  // declaration the inherited const overload from `Base` is not visible in
+  // `Derived`'s name lookup and is therefore not treated as a pair, even
+  // though a call on a `Derived` could in theory resolve to it.
+  const auto AST = buildASTFromCode("struct Base { int get() const; };"
+                                    "struct Derived : Base { int get(); };"
+                                    "void f() { Derived x; x.get(); }");
+  const auto Results =
+      match(withEnclosingCompound(declRefTo("x")), AST->getASTContext());
+  EXPECT_TRUE(isMutated(Results, AST.get()));
+  EXPECT_TRUE(isMutatedAllowConstOverloads(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, AllowConstOverloads_UsingDeclaredConstOverload) {
+  // With a `using Base::get;` declaration, the const overload is brought into
+  // `Derived`'s lookup scope and the pair is recognized.
+  const auto AST =
+      buildASTFromCode("struct Base { int get() const; };"
+                       "struct Derived : Base { using Base::get; int get(); };"
+                       "void f() { Derived x; x.get(); }");
+  const auto Results =
+      match(withEnclosingCompound(declRefTo("x")), AST->getASTContext());
+  EXPECT_TRUE(isMutated(Results, AST.get()));
+  EXPECT_FALSE(isMutatedAllowConstOverloads(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, AllowConstOverloads_RvalueRefReturnNotPaired) {
+  // Rvalue-reference returns are also escape paths and are not treated as
+  // a pair.
+  const auto AST =
+      buildASTFromCode("struct Foo { int &&take(); const int &&take() const; };"
+                       "void f() { Foo x; x.take(); }");
+  const auto Results =
+      match(withEnclosingCompound(declRefTo("x")), AST->getASTContext());
+  EXPECT_TRUE(isMutated(Results, AST.get()));
+  EXPECT_TRUE(isMutatedAllowConstOverloads(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, AllowConstOverloads_OperatorArrowNotPaired) {
+  // Regression for `std::optional`-style `T* operator->()` /
+  // `const T* operator->() const` pairs: the non-const overload's returned
+  // pointer is commonly used to mutate the pointed-to object (e.g.
+  // `opt->setX(...)`), so the call must remain a mutation indicator.
+  const auto AST = buildASTFromCode("struct Opt {"
+                                    "  int *operator->();"
+                                    "  const int *operator->() const;"
+                                    "};"
+                                    "void f() { Opt o; (void)o.operator->(); }");
+  const auto Results =
+      match(withEnclosingCompound(declRefTo("o")), AST->getASTContext());
+  EXPECT_TRUE(isMutated(Results, AST.get()));
+  EXPECT_TRUE(isMutatedAllowConstOverloads(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, AllowConstOverloads_OperatorStarNotPaired) {
+  // Similar to `operator->`: `T& operator*()` / `const T& operator*() const`
+  // is not a recognized pair because the non-const return can be written
+  // through.
+  const auto AST =
+      buildASTFromCode("struct Ptr {"
+                       "  int &operator*();"
+                       "  const int &operator*() const;"
+                       "};"
+                       "void f() { Ptr p; *p = 1; }");
+  const auto Results =
+      match(withEnclosingCompound(declRefTo("p")), AST->getASTContext());
+  EXPECT_TRUE(isMutated(Results, AST.get()));
+  EXPECT_TRUE(isMutatedAllowConstOverloads(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, AllowConstOverloads_RefKindMismatch) {
+  // `T& get()` vs `const T&& get() const` is NOT a paired overload because
+  // the reference kinds differ.
+  const auto AST =
+      buildASTFromCode("struct Foo { int &get(); const int &&get() const; };"
+                       "void f() { Foo x; x.get(); }");
+  const auto Results =
+      match(withEnclosingCompound(declRefTo("x")), AST->getASTContext());
+  EXPECT_TRUE(isMutated(Results, AST.get()));
+  EXPECT_TRUE(isMutatedAllowConstOverloads(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest, AllowConstOverloads_MultiLevelPointerNotPaired) {
+  // Multi-level pointer pairs like `T**` / `const T**` are intentionally NOT
+  // recognized; pointer returns are not considered pairs at all.
+  const auto AST =
+      buildASTFromCode("struct Foo { int **get(); const int **get() const; };"
+                       "void f() { Foo x; x.get(); }");
+  const auto Results =
+      match(withEnclosingCompound(declRefTo("x")), AST->getASTContext());
+  EXPECT_TRUE(isMutated(Results, AST.get()));
+  EXPECT_TRUE(isMutatedAllowConstOverloads(Results, AST.get()));
+}
+
+TEST(ExprMutationAnalyzerTest,
+     AllowConstOverloads_VolatileQualifierPropagates) {
+  // The other qualifiers of the implicit-object parameter (e.g. `volatile`)
+  // are preserved when building the hypothetical const overload, so a
+  // `volatile` / `const volatile` pair is correctly recognized.
+  const auto AST = buildASTFromCode(
+      "struct Foo { int get() volatile; int get() const volatile; };"
+      "void f() { Foo x; x.get(); }");
+  const auto Results =
+      match(withEnclosingCompound(declRefTo("x")), AST->getASTContext());
+  EXPECT_TRUE(isMutated(Results, AST.get()));
+  EXPECT_FALSE(isMutatedAllowConstOverloads(Results, AST.get()));
 }
 
 TEST(ExprMutationAnalyzerTest, NonConstMemberFuncOnPointer) {

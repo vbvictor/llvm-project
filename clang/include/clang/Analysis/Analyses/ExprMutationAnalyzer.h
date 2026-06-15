@@ -38,9 +38,39 @@ public:
       FuncParmAnalyzer.clear();
     }
   };
+
+  /// Configuration for the analyzer. Options are shared across this analyzer
+  /// and any nested `FunctionParmMutationAnalyzer`s reached through call-site
+  /// recursion.
+  struct Options {
+    /// When set to true, treats a call to a non-const member function as
+    /// non-mutating if the same class declares a const-qualified overload
+    /// with the same name, the same parameter types, and the same value
+    /// return type (e.g. `int get()` paired with `int get() const`).
+    ///
+    /// Pair detection is intentionally narrow to avoid false positives:
+    ///   - Only methods declared directly on the same class are considered;
+    ///     overloads inherited via base classes are matched only when made
+    ///     visible by a `using` declaration.
+    ///   - The two overloads must have identical parameter types. Deleted
+    ///     overloads are ignored. Other method qualifiers, such as
+    ///     `volatile`, must match between the two overloads.
+    ///   - **Only value return types are considered.** Reference and pointer
+    ///     return types (e.g. `T&` / `const T&`, `T*` / `const T*`,
+    ///     `T&&` / `const T&&`) are not treated as paired even when they
+    ///     differ only by an added `const` on the pointee/referent. Such
+    ///     non-const overloads can expose a mutable reference or pointer
+    ///     that the caller can use to mutate the object (e.g.
+    ///     `c.get() = x;`, `opt->setX(...)` via `std::optional::operator->`,
+    ///     `*p = x;` via `operator*`), and the analyzer does not track
+    ///     mutations through such escape paths.
+    bool AllowConstOverloads = false;
+  };
+
   struct Analyzer {
-    Analyzer(const Stmt &Stm, ASTContext &Context, Memoized &Memorized)
-        : Stm(Stm), Context(Context), Memorized(Memorized) {}
+    Analyzer(const Stmt &Stm, ASTContext &Context, Memoized &Memorized,
+             const Options &Opts)
+        : Stm(Stm), Context(Context), Memorized(Memorized), Opts(Opts) {}
 
     const Stmt *findMutation(const Expr *Exp);
     const Stmt *findMutation(const Decl *Dec);
@@ -78,10 +108,20 @@ public:
     const Stmt &Stm;
     ASTContext &Context;
     Memoized &Memorized;
+    const Options &Opts;
   };
 
   ExprMutationAnalyzer(const Stmt &Stm, ASTContext &Context)
-      : Memorized(), A(Stm, Context, Memorized) {}
+      : Memorized(), Opts(), A(Stm, Context, Memorized, Opts) {}
+
+  /// When set to true, treats a call to a non-const member function as
+  /// non-mutating if the same class declares a const-qualified overload with
+  /// the same name and parameter types. This is useful for callers that want
+  /// to treat such overload pairs (e.g. `T& get()` paired with `const T& get()
+  /// const`) as equivalent in terms of object mutation.
+  /// Must be set before any mutation queries on this analyzer; toggling it
+  /// later does not invalidate previously memoized results.
+  void setAllowConstOverloads(bool Value) { Opts.AllowConstOverloads = Value; }
 
   /// check whether stmt is unevaluated. mutation analyzer will ignore the
   /// content in unevaluated stmt.
@@ -107,6 +147,7 @@ public:
 
 private:
   Memoized Memorized;
+  Options Opts;
   Analyzer A;
 };
 
@@ -116,7 +157,8 @@ class FunctionParmMutationAnalyzer {
 public:
   static FunctionParmMutationAnalyzer *
   getFunctionParmMutationAnalyzer(const FunctionDecl &Func, ASTContext &Context,
-                                  ExprMutationAnalyzer::Memoized &Memorized) {
+                                  ExprMutationAnalyzer::Memoized &Memorized,
+                                  const ExprMutationAnalyzer::Options &Opts) {
     auto it = Memorized.FuncParmAnalyzer.find(&Func);
     if (it == Memorized.FuncParmAnalyzer.end()) {
       // Creating a new instance of FunctionParmMutationAnalyzer below may add
@@ -127,7 +169,7 @@ public:
           Memorized.FuncParmAnalyzer
               .try_emplace(&Func, std::unique_ptr<FunctionParmMutationAnalyzer>(
                                       new FunctionParmMutationAnalyzer(
-                                          Func, Context, Memorized)))
+                                          Func, Context, Memorized, Opts)))
               .first;
     }
     return it->getSecond().get();
@@ -143,7 +185,8 @@ private:
   llvm::DenseMap<const ParmVarDecl *, const Stmt *> Results;
 
   FunctionParmMutationAnalyzer(const FunctionDecl &Func, ASTContext &Context,
-                               ExprMutationAnalyzer::Memoized &Memorized);
+                               ExprMutationAnalyzer::Memoized &Memorized,
+                               const ExprMutationAnalyzer::Options &Opts);
 };
 
 } // namespace clang

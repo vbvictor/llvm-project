@@ -40,6 +40,7 @@ private:
                                        ASTContext &Context);
 
   const bool WarnOnAllAutoCopies;
+  const bool AllowConstOverloads;
   const std::vector<StringRef> AllowedTypes;
 };
 

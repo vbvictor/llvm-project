@@ -26,6 +26,33 @@ Options
    When `true`, warns on any use of ``auto`` as the type of the range-based for
    loop variable. Default is `false`.
 
+.. option:: AllowConstOverloads
+
+   When `true`, a call to a non-const member function is treated as
+   non-mutating if the same class also declares a const-qualified overload
+   with the same name, same parameter types, and same value return type
+   (for example ``int get()`` paired with ``int get() const``). This allows
+   the check to suggest a ``const`` reference in cases where the loop
+   variable is only used to call such overload pairs. Default is `true`.
+
+   Pair detection is intentionally narrow to avoid false positives:
+
+   - Only methods declared **directly on the same class** are considered;
+     overloads brought in via base classes are only matched when made visible
+     by a ``using`` declaration.
+   - The two overloads must have **identical parameter types** (deleted
+     overloads are ignored). Other method qualifiers, such as ``volatile``,
+     must match between the two overloads.
+   - **Only value return types are considered.** Reference- and
+     pointer-returning pairs such as ``T&`` / ``const T&``, ``T*`` /
+     ``const T*``, or ``T&&`` / ``const T&&`` are *not* treated as
+     paired, because the non-const overload can expose a mutable reference
+     or pointer that the caller can use to mutate the object — e.g.
+     ``c.get() = x;``, ``opt->setX(...)`` via ``std::optional::operator->``,
+     or ``*p = x;`` via ``operator*``. The analyzer does not track
+     mutations through such escape paths, so the non-const call is kept
+     as a conservative mutation indicator.
+
 .. option:: AllowedTypes
 
    A semicolon-separated list of names of types allowed to be copied in each

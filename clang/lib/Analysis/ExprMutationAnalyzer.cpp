@@ -207,7 +207,73 @@ AST_MATCHER(CXXTypeidExpr, isPotentiallyEvaluated) {
   return Node.isPotentiallyEvaluated();
 }
 
-AST_MATCHER(CXXMemberCallExpr, isConstCallee) {
+// Returns true if `ConstRet` is a plausible "read-only counterpart" of
+// `NonConstRet` for the purpose of considering the two member-function
+// overloads to be semantically equivalent.
+//
+// Detection is intentionally restricted to overloads that return by value
+// and produce the same value type (e.g. `int get()` / `int get() const`).
+// Reference- and pointer-returning pairs (e.g. `T& get()` / `const T& get()
+// const`, `T* operator->()` / `const T* operator->() const`) are NOT
+// considered equivalent because the non-const overload exposes a mutable
+// reference or pointer through which the caller can mutate the object
+// without a syntactic mutation on the variable being analyzed — e.g.
+// `c.get() = x;` or `c->setX(...);` via `std::optional::operator->`. The
+// existing analyzer uses the non-constness of the call as a conservative
+// proxy for those escape paths, and removing that signal causes real
+// false positives.
+bool returnTypeIsConstPair(QualType NonConstRet, QualType ConstRet,
+                           ASTContext &Context) {
+  if (NonConstRet->isReferenceType() || NonConstRet->isPointerType() ||
+      ConstRet->isReferenceType() || ConstRet->isPointerType())
+    return false;
+  return Context.hasSameUnqualifiedType(NonConstRet, ConstRet);
+}
+
+// Returns true if `MD` is a non-const member function whose class declares a
+// const-qualified overload with the same name and parameter types and a
+// semantically equivalent return type (see `returnTypeIsConstPair`). Such
+// pairs (e.g. `T& get()` / `const T& get() const`, `T* p()` / `const T* p()
+// const`) are commonly used to provide const and non-const accessors with
+// equivalent semantics.
+bool hasMatchingConstOverload(const CXXMethodDecl *MD) {
+  if (!MD || MD->isConst() || MD->isStatic())
+    return false;
+  const CXXRecordDecl *Parent = MD->getParent();
+  if (!Parent)
+    return false;
+  const auto *Proto = MD->getType()->getAs<FunctionProtoType>();
+  if (!Proto)
+    return false;
+
+  ASTContext &Context = MD->getASTContext();
+
+  FunctionProtoType::ExtProtoInfo EPI = Proto->getExtProtoInfo();
+  EPI.TypeQuals.addConst();
+  const ArrayRef<QualType> ParamTypes = Proto->getParamTypes();
+
+  for (const NamedDecl *ND : Parent->lookup(MD->getDeclName())) {
+    if (const auto *Using = dyn_cast<UsingShadowDecl>(ND))
+      ND = Using->getTargetDecl();
+    const auto *Other = dyn_cast_or_null<CXXMethodDecl>(ND);
+    if (!Other || Other->getCanonicalDecl() == MD->getCanonicalDecl() ||
+        !Other->isConst() || Other->isDeleted())
+      continue;
+
+    if (!returnTypeIsConstPair(MD->getReturnType(), Other->getReturnType(),
+                               Context))
+      continue;
+
+    const QualType Hypothetical =
+        Context.getFunctionType(Other->getReturnType(), ParamTypes, EPI);
+    if (Context.hasSameFunctionTypeIgnoringExceptionSpec(Hypothetical,
+                                                         Other->getType()))
+      return true;
+  }
+  return false;
+}
+
+AST_MATCHER_P(CXXMemberCallExpr, isConstCallee, bool, AllowConstOverloads) {
   const Decl *CalleeDecl = Node.getCalleeDecl();
   const auto *VD = dyn_cast_or_null<ValueDecl>(CalleeDecl);
   if (!VD)
@@ -218,7 +284,19 @@ AST_MATCHER(CXXMemberCallExpr, isConstCallee) {
                         : dyn_cast<FunctionProtoType>(T);
   if (!FPT)
     return false;
-  return FPT->isConst();
+  if (FPT->isConst())
+    return true;
+  if (!AllowConstOverloads)
+    return false;
+  return hasMatchingConstOverload(dyn_cast<CXXMethodDecl>(CalleeDecl));
+}
+
+// Matches a non-const CXXMethodDecl that has a const-qualified overload in the
+// same class with identical name and parameter types. When `Enabled` is false,
+// this matcher never matches, allowing callers to conditionally enable the
+// behavior.
+AST_MATCHER_P(CXXMethodDecl, hasMatchingConstOverloadIf, bool, Enabled) {
+  return Enabled && hasMatchingConstOverload(&Node);
 }
 
 AST_MATCHER_P(GenericSelectionExpr, hasControllingExpr,
@@ -417,16 +495,23 @@ ExprMutationAnalyzer::Analyzer::findDirectMutation(const Expr *Exp) {
       unaryOperator(anyOf(hasOperatorName("++"), hasOperatorName("--")),
                     hasUnaryOperand(canResolveToExpr(Exp)));
 
+  const bool AllowConstOverloads = Opts.AllowConstOverloads;
+
   // Invoking non-const member function.
   // A member function is assumed to be non-const when it is unresolved.
-  const auto NonConstMethod = cxxMethodDecl(unless(isConst()));
+  // When `AllowConstOverloads` is set, non-const methods that have a
+  // const-qualified overload with the same parameters are not considered to
+  // mutate the object.
+  const auto NonConstMethod =
+      cxxMethodDecl(unless(isConst()),
+                    unless(hasMatchingConstOverloadIf(AllowConstOverloads)));
 
   const auto AsNonConstThis = expr(anyOf(
       // For member calls through a pointer, the pointer variable
       // itself is not mutated but only the pointee is mutated.
-      cxxMemberCallExpr(
-          on(canResolveToExpr(Exp)),
-          unless(anyOf(isConstCallee(), thisPointerType(pointerType())))),
+      cxxMemberCallExpr(on(canResolveToExpr(Exp)),
+                        unless(anyOf(isConstCallee(AllowConstOverloads),
+                                     thisPointerType(pointerType())))),
 
       cxxOperatorCallExpr(callee(NonConstMethod),
                           hasArgument(0, canResolveToExpr(Exp))),
@@ -738,7 +823,7 @@ ExprMutationAnalyzer::Analyzer::findFunctionArgMutation(const Expr *Exp) {
               RefType->getPointeeType().getCanonicalType())) {
         FunctionParmMutationAnalyzer *Analyzer =
             FunctionParmMutationAnalyzer::getFunctionParmMutationAnalyzer(
-                *Func, Context, Memorized);
+                *Func, Context, Memorized, Opts);
         if (Analyzer->findMutation(Parm))
           return Exp;
         continue;
@@ -769,11 +854,13 @@ ExprMutationAnalyzer::Analyzer::findPointeeValueMutation(const Expr *Exp) {
 const Stmt *
 ExprMutationAnalyzer::Analyzer::findPointeeMemberMutation(const Expr *Exp) {
   const Stmt *MemberCallExpr = selectFirst<Stmt>(
-      "stmt", match(stmt(forEachDescendant(
-                        cxxMemberCallExpr(on(canResolveToExprPointee(Exp)),
-                                          unless(isConstCallee()))
-                            .bind("stmt"))),
-                    Stm, Context));
+      "stmt",
+      match(
+          stmt(forEachDescendant(
+              cxxMemberCallExpr(on(canResolveToExprPointee(Exp)),
+                                unless(isConstCallee(Opts.AllowConstOverloads)))
+                  .bind("stmt"))),
+          Stm, Context));
   if (MemberCallExpr)
     return MemberCallExpr;
   const auto Matches = match(
@@ -840,14 +927,15 @@ ExprMutationAnalyzer::Analyzer::findPointeeToNonConst(const Expr *Exp) {
 
 FunctionParmMutationAnalyzer::FunctionParmMutationAnalyzer(
     const FunctionDecl &Func, ASTContext &Context,
-    ExprMutationAnalyzer::Memoized &Memorized)
-    : BodyAnalyzer(*Func.getBody(), Context, Memorized) {
+    ExprMutationAnalyzer::Memoized &Memorized,
+    const ExprMutationAnalyzer::Options &Opts)
+    : BodyAnalyzer(*Func.getBody(), Context, Memorized, Opts) {
   if (const auto *Ctor = dyn_cast<CXXConstructorDecl>(&Func)) {
     // CXXCtorInitializer might also mutate Param but they're not part of
     // function body, check them eagerly here since they're typically trivial.
     for (const CXXCtorInitializer *Init : Ctor->inits()) {
       ExprMutationAnalyzer::Analyzer InitAnalyzer(*Init->getInit(), Context,
-                                                  Memorized);
+                                                  Memorized, Opts);
       for (const ParmVarDecl *Parm : Ctor->parameters()) {
         if (Results.contains(Parm))
           continue;

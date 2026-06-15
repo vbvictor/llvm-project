@@ -22,11 +22,13 @@ namespace clang::tidy::performance {
 ForRangeCopyCheck::ForRangeCopyCheck(StringRef Name, ClangTidyContext *Context)
     : ClangTidyCheck(Name, Context),
       WarnOnAllAutoCopies(Options.get("WarnOnAllAutoCopies", false)),
+      AllowConstOverloads(Options.get("AllowConstOverloads", true)),
       AllowedTypes(
           utils::options::parseStringList(Options.get("AllowedTypes", ""))) {}
 
 void ForRangeCopyCheck::storeOptions(ClangTidyOptions::OptionMap &Opts) {
   Options.store(Opts, "WarnOnAllAutoCopies", WarnOnAllAutoCopies);
+  Options.store(Opts, "AllowConstOverloads", AllowConstOverloads);
   Options.store(Opts, "AllowedTypes",
                 utils::options::serializeStringList(AllowedTypes));
 }
@@ -120,7 +122,9 @@ bool ForRangeCopyCheck::handleCopyIsOnlyConstReferenced(
   // Because the fix (changing to `const auto &`) will introduce an unused
   // compiler warning which can't be suppressed.
   // Since this case is very rare, it is safe to ignore it.
-  if (!ExprMutationAnalyzer(*ForRange.getBody(), Context).isMutated(&LoopVar) &&
+  ExprMutationAnalyzer Analyzer(*ForRange.getBody(), Context);
+  Analyzer.setAllowConstOverloads(AllowConstOverloads);
+  if (!Analyzer.isMutated(&LoopVar) &&
       isReferenced(LoopVar, *ForRange.getBody(), Context)) {
     auto Diag = diag(
         LoopVar.getLocation(),

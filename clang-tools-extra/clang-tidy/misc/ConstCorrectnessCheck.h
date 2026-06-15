@@ -40,6 +40,7 @@ private:
   llvm::DenseMap<const Stmt *, MutationAnalyzer> ScopesCache;
   llvm::DenseSet<SourceLocation> TemplateDiagnosticsCache;
   ExprMutationAnalyzer::Memoized ParamMutationAnalyzerMemoized;
+  ExprMutationAnalyzer::Options MutationAnalyzerOptions;
 
   const bool AnalyzePointers;
   const bool AnalyzeReferences;
@@ -53,6 +54,8 @@ private:
   const bool TransformPointersAsValues;
   const bool TransformReferences;
   const bool TransformValues;
+
+  const bool AllowConstOverloads;
 
   const std::vector<StringRef> AllowedTypes;
 };

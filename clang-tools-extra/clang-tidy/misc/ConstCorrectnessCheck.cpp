@@ -67,8 +67,11 @@ ConstCorrectnessCheck::ConstCorrectnessCheck(StringRef Name,
       TransformReferences(Options.get("TransformReferences", true)),
       TransformValues(Options.get("TransformValues", true)),
 
+      AllowConstOverloads(Options.get("AllowConstOverloads", true)),
+
       AllowedTypes(
           utils::options::parseStringList(Options.get("AllowedTypes", ""))) {
+  MutationAnalyzerOptions.AllowConstOverloads = AllowConstOverloads;
   if (AnalyzeValues == false && AnalyzeReferences == false &&
       AnalyzePointers == false)
     this->configurationDiag(
@@ -91,6 +94,8 @@ void ConstCorrectnessCheck::storeOptions(ClangTidyOptions::OptionMap &Opts) {
   Options.store(Opts, "TransformPointersAsValues", TransformPointersAsValues);
   Options.store(Opts, "TransformReferences", TransformReferences);
   Options.store(Opts, "TransformValues", TransformValues);
+
+  Options.store(Opts, "AllowConstOverloads", AllowConstOverloads);
 
   Options.store(Opts, "AllowedTypes",
                 utils::options::serializeStringList(AllowedTypes));
@@ -334,8 +339,10 @@ void ConstCorrectnessCheck::check(const MatchFinder::MatchResult &Result) {
 void ConstCorrectnessCheck::registerScope(const Stmt *LocalScope,
                                           ASTContext *Context) {
   auto &Analyzer = ScopesCache[LocalScope];
-  if (!Analyzer)
+  if (!Analyzer) {
     Analyzer = std::make_unique<ExprMutationAnalyzer>(*LocalScope, *Context);
+    Analyzer->setAllowConstOverloads(AllowConstOverloads);
+  }
 }
 
 bool ConstCorrectnessCheck::isMutated(const VarDecl *Variable,
@@ -344,7 +351,8 @@ bool ConstCorrectnessCheck::isMutated(const VarDecl *Variable,
                                       ASTContext *Context) {
   if (const auto *Param = dyn_cast<ParmVarDecl>(Variable)) {
     return FunctionParmMutationAnalyzer::getFunctionParmMutationAnalyzer(
-               *Func, *Context, ParamMutationAnalyzerMemoized)
+               *Func, *Context, ParamMutationAnalyzerMemoized,
+               MutationAnalyzerOptions)
         ->isMutated(Param);
   }
 

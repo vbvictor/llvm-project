@@ -44,6 +44,7 @@ protected:
 
 private:
   ExprMutationAnalyzer::Memoized MutationAnalyzerCache;
+  ExprMutationAnalyzer::Options MutationAnalyzerOptions;
   utils::IncludeInserter Inserter;
   const std::vector<StringRef> AllowedTypes;
   bool IgnoreCoroutines;

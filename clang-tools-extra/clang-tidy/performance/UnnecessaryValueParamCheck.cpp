@@ -77,7 +77,8 @@ void UnnecessaryValueParamCheck::check(const MatchFinder::MatchResult &Result) {
 
   FunctionParmMutationAnalyzer *Analyzer =
       FunctionParmMutationAnalyzer::getFunctionParmMutationAnalyzer(
-          *Function, *Result.Context, MutationAnalyzerCache);
+          *Function, *Result.Context, MutationAnalyzerCache,
+          MutationAnalyzerOptions);
   if (Analyzer->isMutated(Param))
     return;
 
