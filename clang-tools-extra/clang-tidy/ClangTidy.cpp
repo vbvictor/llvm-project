@@ -330,10 +330,31 @@ public:
   ClangTidyASTConsumer(std::vector<std::unique_ptr<ASTConsumer>> Consumers,
                        std::unique_ptr<ClangTidyProfiling> Profiling,
                        std::unique_ptr<ast_matchers::MatchFinder> Finder,
-                       std::vector<std::unique_ptr<ClangTidyCheck>> Checks)
+                       std::vector<std::unique_ptr<ClangTidyCheck>> Checks,
+                       bool Quiet, bool AllowChecksOnBrokenTU)
       : MultiplexConsumer(std::move(Consumers)),
         Profiling(std::move(Profiling)), Finder(std::move(Finder)),
-        Checks(std::move(Checks)) {}
+        Checks(std::move(Checks)), Quiet(Quiet),
+        AllowChecksOnBrokenTU(AllowChecksOnBrokenTU) {}
+
+  void HandleTranslationUnit(ASTContext &Ctx) override {
+    if (!AllowChecksOnBrokenTU &&
+        Ctx.getDiagnostics().hasUncompilableErrorOccurred()) {
+      if (!Quiet) {
+        StringRef File = "<unknown>";
+        const SourceManager &SM = Ctx.getSourceManager();
+        if (OptionalFileEntryRef Entry =
+                SM.getFileEntryRefForID(SM.getMainFileID()))
+          File = Entry->getName();
+        llvm::errs() << "Skipping clang-tidy checks for '" << File
+                     << "' due to compilation errors. "
+                     << "Pass '--allow-checks-on-broken-tu' to analyze "
+                        "the translation unit anyway.\n";
+      }
+      return;
+    }
+    MultiplexConsumer::HandleTranslationUnit(Ctx);
+  }
 
 private:
   // Destructor order matters! Profiling must be destructed last.
@@ -341,6 +362,8 @@ private:
   std::unique_ptr<ClangTidyProfiling> Profiling;
   std::unique_ptr<ast_matchers::MatchFinder> Finder;
   std::vector<std::unique_ptr<ClangTidyCheck>> Checks;
+  bool Quiet;
+  bool AllowChecksOnBrokenTU;
   void anchor() override {}
 };
 
@@ -348,9 +371,11 @@ private:
 
 ClangTidyASTConsumerFactory::ClangTidyASTConsumerFactory(
     ClangTidyContext &Context,
-    IntrusiveRefCntPtr<llvm::vfs::OverlayFileSystem> OverlayFS)
+    IntrusiveRefCntPtr<llvm::vfs::OverlayFileSystem> OverlayFS, bool Quiet,
+    bool AllowChecksOnBrokenTU)
     : Context(Context), OverlayFS(std::move(OverlayFS)),
-      CheckFactories(new ClangTidyCheckFactories) {
+      CheckFactories(new ClangTidyCheckFactories), Quiet(Quiet),
+      AllowChecksOnBrokenTU(AllowChecksOnBrokenTU) {
 #if CLANG_TIDY_ENABLE_QUERY_BASED_CUSTOM_CHECKS
   if (Context.canExperimentalCustomChecks() && custom::RegisterCustomChecks)
     custom::RegisterCustomChecks(Context.getOptions(), *CheckFactories);
@@ -487,7 +512,7 @@ ClangTidyASTConsumerFactory::createASTConsumer(CompilerInstance &Compiler,
 #endif // CLANG_TIDY_ENABLE_STATIC_ANALYZER
   return std::make_unique<ClangTidyASTConsumer>(
       std::move(Consumers), std::move(Profiling), std::move(Finder),
-      std::move(Checks));
+      std::move(Checks), Quiet, AllowChecksOnBrokenTU);
 }
 
 std::vector<std::string> ClangTidyASTConsumerFactory::getCheckNames() {
@@ -563,7 +588,8 @@ runClangTidy(ClangTidyContext &Context, const CompilationDatabase &Compilations,
              ArrayRef<std::string> InputFiles,
              llvm::IntrusiveRefCntPtr<llvm::vfs::OverlayFileSystem> BaseFS,
              bool ApplyAnyFix, bool EnableCheckProfile,
-             StringRef StoreCheckProfile, bool Quiet) {
+             StringRef StoreCheckProfile, bool Quiet,
+             bool AllowChecksOnBrokenTU) {
   ClangTool Tool(Compilations, InputFiles,
                  std::make_shared<PCHContainerOperations>(), BaseFS);
 
@@ -619,8 +645,10 @@ runClangTidy(ClangTidyContext &Context, const CompilationDatabase &Compilations,
   public:
     ActionFactory(ClangTidyContext &Context,
                   IntrusiveRefCntPtr<llvm::vfs::OverlayFileSystem> BaseFS,
-                  bool Quiet)
-        : ConsumerFactory(Context, std::move(BaseFS)), Quiet(Quiet) {}
+                  bool Quiet, bool AllowChecksOnBrokenTU)
+        : ConsumerFactory(Context, std::move(BaseFS), Quiet,
+                          AllowChecksOnBrokenTU),
+          Quiet(Quiet) {}
     std::unique_ptr<FrontendAction> create() override {
       return std::make_unique<Action>(&ConsumerFactory);
     }
@@ -655,7 +683,8 @@ runClangTidy(ClangTidyContext &Context, const CompilationDatabase &Compilations,
     bool Quiet;
   };
 
-  ActionFactory Factory(Context, std::move(BaseFS), Quiet);
+  ActionFactory Factory(Context, std::move(BaseFS), Quiet,
+                        AllowChecksOnBrokenTU);
   Tool.run(&Factory);
   return DiagConsumer.take();
 }

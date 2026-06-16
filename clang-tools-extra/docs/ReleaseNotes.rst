@@ -49,6 +49,14 @@ Major New Features
 Potentially Breaking Changes
 ----------------------------
 
+- :program:`clang-tidy` no longer runs checks on translation units that fail
+  to compile (i.e. contain a ``clang-diagnostic-error``). Compiler errors are
+  still reported, but the checks themselves are skipped because the AST may
+  be incomplete, which used to cause crashes and misleading diagnostics. The
+  previous behavior can be restored with the new
+  ``--allow-checks-on-broken-tu`` command-line option. The ``--fix-errors``
+  option implies ``--allow-checks-on-broken-tu``.
+
 - The :doc:`modernize-use-using <clang-tidy/checks/modernize/use-using>` check
   now sets the `IgnoreExternC` option to `true` by default. The check will
   no longer transform ``typedef``\ s within ``extern "C"`` blocks.

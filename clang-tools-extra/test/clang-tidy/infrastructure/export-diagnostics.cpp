@@ -1,5 +1,5 @@
 // RUN: grep -Ev "// *[A-Z-]+:" %s > %t-input.cpp
-// RUN: not clang-tidy %t-input.cpp -checks='-*,google-explicit-constructor,clang-diagnostic-missing-prototypes,clang-diagnostic-zero-length-array' --warnings-as-errors='clang-diagnostic-missing-prototypes,google-explicit-constructor' -export-fixes=%t.yaml -- -Wmissing-prototypes -Wzero-length-array > %t.msg 2>&1
+// RUN: not clang-tidy %t-input.cpp -checks='-*,google-explicit-constructor,clang-diagnostic-missing-prototypes,clang-diagnostic-zero-length-array' --warnings-as-errors='clang-diagnostic-missing-prototypes,google-explicit-constructor' --allow-checks-on-broken-tu -export-fixes=%t.yaml -- -Wmissing-prototypes -Wzero-length-array > %t.msg 2>&1
 // RUN: FileCheck -input-file=%t.msg -check-prefix=CHECK-MESSAGES %s -implicit-check-not='{{warning|error|note}}:'
 // RUN: FileCheck -input-file=%t.yaml -check-prefix=CHECK-YAML %s
 #define X(n) void n ## n() {}

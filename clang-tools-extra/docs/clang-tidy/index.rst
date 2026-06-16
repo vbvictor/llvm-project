@@ -118,6 +118,15 @@ failures that must be fixed before :program:`clang-tidy` can perform its
 analysis. Unlike other diagnostics, ``clang-diagnostic-error`` cannot be
 disabled, as :program:`clang-tidy` requires valid code to function.
 
+When a translation unit contains compilation errors, :program:`clang-tidy`
+skips running checks on it by default and only reports the compilation
+errors. This avoids crashes and misleading diagnostics caused by analyzing
+an incomplete AST. An informational message about the skip is printed to
+stderr (suppressed by ``--quiet``). To run checks on translation units
+with compilation errors (e.g. for backward compatibility), use the
+``--allow-checks-on-broken-tu`` option. The ``--fix-errors`` option
+implies ``--allow-checks-on-broken-tu``.
+
 The ``-fix`` flag instructs :program:`clang-tidy` to fix found errors if
 supported by corresponding checks.
 
@@ -138,6 +147,15 @@ An overview of all the command-line options:
 
   clang-tidy options:
 
+    --allow-checks-on-broken-tu      - Allow clang-tidy checks to run on translation
+                                       units that have compilation errors. By default,
+                                       clang-tidy skips running checks when the
+                                       translation unit fails to compile, because the
+                                       AST may be incomplete and running checks on it
+                                       may produce misleading diagnostics or crash.
+                                       Compiler errors are always reported regardless
+                                       of this option. Implied when '--fix-errors' is
+                                       specified.
     --allow-no-checks                - Allow empty enabled checks. This suppresses
                                        the "no checks enabled" error when disabling
                                        all of the checks.

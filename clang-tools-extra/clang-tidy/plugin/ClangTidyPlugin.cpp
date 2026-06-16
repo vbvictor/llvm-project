@@ -45,8 +45,12 @@ public:
         DiagnosticIDs::create(), *DiagOpts, DiagConsumer);
     Context->setDiagnosticsEngine(std::move(DiagOpts), DiagEngine.get());
 
-    // Create the AST consumer.
-    ClangTidyASTConsumerFactory Factory(*Context);
+    // Create the AST consumer. When running as a clang plugin the checks are
+    // driven by an ongoing compilation, so preserve the historical behavior of
+    // running checks even if the translation unit fails to compile.
+    ClangTidyASTConsumerFactory Factory(*Context, /*OverlayFS=*/nullptr,
+                                        /*Quiet=*/false,
+                                        /*AllowChecksOnBrokenTU=*/true);
     std::vector<std::unique_ptr<ASTConsumer>> Vec;
     Vec.push_back(Factory.createASTConsumer(Compiler, File));
 

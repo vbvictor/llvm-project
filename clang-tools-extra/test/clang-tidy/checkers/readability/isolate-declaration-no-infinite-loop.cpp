@@ -1,4 +1,4 @@
-// RUN: %check_clang_tidy -expect-clang-tidy-error %s readability-isolate-declaration %t
+// RUN: %check_clang_tidy -expect-clang-tidy-error %s readability-isolate-declaration %t -- --allow-checks-on-broken-tu --
 
 int main(){
   int a, b

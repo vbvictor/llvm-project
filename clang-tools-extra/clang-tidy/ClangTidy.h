@@ -35,7 +35,8 @@ class ClangTidyASTConsumerFactory {
 public:
   ClangTidyASTConsumerFactory(
       ClangTidyContext &Context,
-      IntrusiveRefCntPtr<llvm::vfs::OverlayFileSystem> OverlayFS = nullptr);
+      IntrusiveRefCntPtr<llvm::vfs::OverlayFileSystem> OverlayFS = nullptr,
+      bool Quiet = false, bool AllowChecksOnBrokenTU = false);
 
   /// Returns an ASTConsumer that runs the specified clang-tidy checks.
   std::unique_ptr<ASTConsumer> createASTConsumer(CompilerInstance &Compiler,
@@ -51,6 +52,8 @@ private:
   ClangTidyContext &Context;
   IntrusiveRefCntPtr<llvm::vfs::OverlayFileSystem> OverlayFS;
   std::unique_ptr<ClangTidyCheckFactories> CheckFactories;
+  bool Quiet;
+  bool AllowChecksOnBrokenTU;
 };
 
 /// Fills the list of check names that are enabled when the provided
@@ -90,13 +93,17 @@ void filterCheckOptions(ClangTidyOptions &Options,
 /// \param StoreCheckProfile If provided, and EnableCheckProfile is true,
 /// the profile will not be output to stderr, but will instead be stored
 /// as a JSON file in the specified directory.
+/// \param AllowChecksOnBrokenTU If true, checks will run even when the
+/// translation unit has compilation errors. Otherwise, only compiler errors
+/// will be reported and no checks will run on the broken TU.
 std::vector<ClangTidyError>
 runClangTidy(ClangTidyContext &Context,
              const tooling::CompilationDatabase &Compilations,
              ArrayRef<std::string> InputFiles,
              llvm::IntrusiveRefCntPtr<llvm::vfs::OverlayFileSystem> BaseFS,
              bool ApplyAnyFix, bool EnableCheckProfile = false,
-             StringRef StoreCheckProfile = {}, bool Quiet = false);
+             StringRef StoreCheckProfile = {}, bool Quiet = false,
+             bool AllowChecksOnBrokenTU = false);
 
 /// Controls what kind of fixes clang-tidy is allowed to apply.
 enum FixBehaviour {

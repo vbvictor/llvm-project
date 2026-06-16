@@ -367,6 +367,20 @@ false negatives. This option is applied
 before --extra-arg and --extra-arg-before)"),
                                          cl::cat(ClangTidyCategory));
 
+static cl::opt<bool> AllowChecksOnBrokenTU("allow-checks-on-broken-tu", desc(R"(
+Allow clang-tidy checks to run on translation
+units that have compilation errors. By default,
+clang-tidy skips running checks when the
+translation unit fails to compile, because the
+AST may be incomplete and running checks on it
+may produce misleading diagnostics or crash.
+Compiler errors are always reported regardless
+of this option. Implied when '--fix-errors' is
+specified.
+)"),
+                                           cl::init(false),
+                                           cl::cat(ClangTidyCategory));
+
 namespace clang::tidy {
 
 static void printStats(const ClangTidyStats &Stats) {
@@ -737,9 +751,12 @@ int clangTidyMain(int argc, const char **argv) {
   ClangTidyContext Context(
       std::move(OwningOptionsProvider), AllowEnablingAnalyzerAlphaCheckers,
       EnableModuleHeadersParsing, ExperimentalCustomChecks);
-  std::vector<ClangTidyError> Errors =
-      runClangTidy(Context, OptionsParser->getCompilations(), PathList, BaseFS,
-                   FixNotes, EnableCheckProfile, ProfilePrefix, Quiet);
+  // '-fix-errors' requires running checks on broken TUs so that fixes are
+  // produced for compilation errors as well.
+  const bool RunOnBrokenTU = AllowChecksOnBrokenTU || FixErrors;
+  std::vector<ClangTidyError> Errors = runClangTidy(
+      Context, OptionsParser->getCompilations(), PathList, BaseFS, FixNotes,
+      EnableCheckProfile, ProfilePrefix, Quiet, RunOnBrokenTU);
   const bool FoundErrors = llvm::any_of(Errors, [](const ClangTidyError &E) {
     return E.DiagLevel == ClangTidyError::Error;
   });

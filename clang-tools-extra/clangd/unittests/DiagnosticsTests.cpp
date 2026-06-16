@@ -376,6 +376,33 @@ TEST(DiagnosticsTest, ClangTidyEOF) {
                 diagSource(Diag::ClangTidy), diagName("llvm-include-order")))));
 }
 
+TEST(DiagnosticsTest, ClangTidyChecksOnBrokenTU) {
+  // Even when the translation unit has compilation errors, clangd still runs
+  // clang-tidy checks. This differs from the clang-tidy command-line tool,
+  // which skips checks on broken translation units by default. clangd must
+  // preserve this behavior because in an IDE the code being edited is
+  // frequently incomplete or does not yet compile.
+  Annotations Test(R"cpp(
+    $error[[undefined_type]] x; // error-ok
+    int y = $sizeof[[sizeof(sizeof(int))]];
+  )cpp");
+  auto TU = TestTU::withCode(Test.code());
+  TU.ClangTidyProvider = addTidyChecks("bugprone-sizeof-expression");
+  // Keep the ParsedAST alive: getDiagnostics() returns an ArrayRef into it.
+  auto AST = TU.build();
+  auto Diags = AST.getDiagnostics();
+  // The compilation error is always reported.
+  EXPECT_THAT(Diags, Contains(Diag(Test.range("error"),
+                                   "unknown type name 'undefined_type'")));
+  // The clang-tidy check still fires despite the broken TU.
+  if (CLANGD_TIDY_CHECKS)
+    EXPECT_THAT(
+        Diags, Contains(AllOf(Diag(Test.range("sizeof"),
+                                   "suspicious usage of 'sizeof(sizeof(...))'"),
+                              diagSource(Diag::ClangTidy),
+                              diagName("bugprone-sizeof-expression"))));
+}
+
 TEST(DiagnosticTest, TemplatesInHeaders) {
   // Diagnostics from templates defined in headers are placed at the expansion.
   Annotations Main(R"cpp(
