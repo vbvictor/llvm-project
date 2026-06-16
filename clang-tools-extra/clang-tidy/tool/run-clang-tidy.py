@@ -186,6 +186,91 @@ def merge_replacement_files(tmpdir: str, mergefile: str) -> None:
         open(mergefile, "w").close()
 
 
+def get_diagnostic_key(diagnostic: Dict[str, Any]) -> Optional[Tuple[Any, ...]]:
+    """Build a hashable key from a diagnostic's replacements.
+
+    Returns None when the diagnostic carries no replacements, so that such
+    diagnostics (plain warnings with no fix) are never treated as duplicates of
+    one another.
+    """
+    # Replacement file paths are stored relative to the diagnostic's
+    # BuildDirectory (the compile command's directory), exactly as
+    # clang-apply-replacements interprets them.
+    build_directory = diagnostic.get("BuildDirectory", "")
+
+    messages = []
+    if "DiagnosticMessage" in diagnostic:
+        messages.append(diagnostic["DiagnosticMessage"])
+    messages.extend(diagnostic.get("Notes", []))
+
+    replacements = []
+    for message in messages:
+        for r in message.get("Replacements", []):
+            file_path = r.get("FilePath")
+            # The same physical header can be referenced through different path
+            # spellings depending on how each translation unit included it (e.g.
+            # 'a/header.h' vs 'a/sub/../header.h', or relative paths anchored at
+            # different build directories). Resolve against the build directory
+            # and canonicalize so fixes for the same file compare equal
+            # regardless of spelling. os.path.join keeps absolute paths as-is.
+            if file_path is not None:
+                file_path = os.path.realpath(os.path.join(build_directory, file_path))
+            replacements.append(
+                (
+                    file_path,
+                    r.get("Offset"),
+                    r.get("Length"),
+                    r.get("ReplacementText"),
+                )
+            )
+    if not replacements:
+        return None
+    return tuple(replacements)
+
+
+def deduplicate_fixes(tmpdir: str, hide_progress: bool) -> None:
+    """Remove duplicate fixes from the replacement files in a directory.
+
+    A header included by several translation units yields the same fix in
+    multiple exported .yaml files. When these are applied together, identical
+    insertions at the same location can stack up (e.g. 'const const int a').
+    Drop diagnostics whose replacements have already been seen so that each fix
+    is applied only once.
+    """
+    if not yaml:
+        if not hide_progress:
+            print(
+                "Skipping fix deduplication because PyYAML is not installed.",
+                file=sys.stderr,
+            )
+        return
+
+    seen: set = set()
+    removed = 0
+    for replacefile in sorted(glob.iglob(os.path.join(tmpdir, "*.yaml"))):
+        content = yaml.safe_load(open(replacefile, "r"))
+        if not content:
+            continue  # Skip empty files.
+        diagnostics = content.get("Diagnostics", [])
+        unique = []
+        for diagnostic in diagnostics:
+            key = get_diagnostic_key(diagnostic)
+            if key is not None and key in seen:
+                removed += 1
+                continue
+            if key is not None:
+                seen.add(key)
+            unique.append(diagnostic)
+        if len(unique) == len(diagnostics):
+            continue  # Nothing removed, leave the file untouched.
+        content["Diagnostics"] = unique
+        with open(replacefile, "w") as out:
+            yaml.safe_dump(content, out)
+
+    if removed and not hide_progress:
+        print(f"Removed {removed} duplicate fix(es) from headers.")
+
+
 def aggregate_profiles(profile_dir: str) -> Dict[str, float]:
     """Aggregate timing data from multiple profile JSON files"""
     aggregated: Dict[str, float] = {}
@@ -758,6 +843,11 @@ async def main() -> None:
             print_profile_data(aggregated_data)
         else:
             print("No profiling data found.")
+
+    # Deduplicate fixes once over the directory so that both the merged export
+    # and clang-apply-replacements see each header fix only a single time.
+    if export_fixes_dir is not None:
+        deduplicate_fixes(export_fixes_dir, args.hide_progress)
 
     if combine_fixes:
         if not args.hide_progress:

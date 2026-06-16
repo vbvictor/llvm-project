@@ -57,6 +57,11 @@ if config.clang_tidy_staticanalyzer:
     config.available_features.add("static-analyzer")
 if config.clang_tidy_custom_check:
     config.available_features.add("custom-check")
+try:
+    import yaml
+    config.available_features.add("pyyaml")
+except ImportError:
+    pass
 python_exec = shlex.quote(config.python_executable)
 config.substitutions.append(("%python", python_exec))
 check_clang_tidy = os.path.join(

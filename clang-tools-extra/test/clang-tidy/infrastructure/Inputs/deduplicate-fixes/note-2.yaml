@@ -1,0 +1,18 @@
+MainSourceFile: 'two.cpp'
+Diagnostics:
+  - DiagnosticName: misc-fix-in-note
+    DiagnosticMessage:
+      Message: 'x'
+      FilePath: '/case-nt/h.h'
+      FileOffset: 0
+      Replacements: []
+    Notes:
+      - Message: 'n'
+        FilePath: '/case-nt/h.h'
+        FileOffset: 0
+        Replacements:
+          - FilePath: '/case-nt/h.h'
+            Offset: 2
+            Length: 0
+            ReplacementText: 'const '
+    BuildDirectory: '/case-nt'

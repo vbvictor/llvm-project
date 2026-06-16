@@ -1,0 +1,24 @@
+MainSourceFile: 'one.cpp'
+Diagnostics:
+  - DiagnosticName: misc-const-correctness
+    DiagnosticMessage:
+      Message: 'x'
+      FilePath: '/case-of/h.h'
+      FileOffset: 0
+      Replacements:
+        - FilePath: '/case-of/h.h'
+          Offset: 1
+          Length: 0
+          ReplacementText: 'const '
+    BuildDirectory: '/case-of'
+  - DiagnosticName: misc-const-correctness
+    DiagnosticMessage:
+      Message: 'x'
+      FilePath: '/case-of/h.h'
+      FileOffset: 0
+      Replacements:
+        - FilePath: '/case-of/h.h'
+          Offset: 50
+          Length: 0
+          ReplacementText: 'const '
+    BuildDirectory: '/case-of'

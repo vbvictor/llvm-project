@@ -1,0 +1,9 @@
+MainSourceFile: 'two.cpp'
+Diagnostics:
+  - DiagnosticName: some-warning
+    DiagnosticMessage:
+      Message: 'w'
+      FilePath: '/case-nf/h.h'
+      FileOffset: 0
+      Replacements: []
+    BuildDirectory: '/case-nf'

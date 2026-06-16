@@ -1,0 +1,1 @@
+[{"directory":"OUT_DIR/d1","command":"clang++ -I../inc -c OUT_DIR/d1/c.cpp","file":"OUT_DIR/d1/c.cpp"},{"directory":"OUT_DIR/d2/sub","command":"clang++ -I../../inc -c OUT_DIR/d2/sub/e.cpp","file":"OUT_DIR/d2/sub/e.cpp"}]

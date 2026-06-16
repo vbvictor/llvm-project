@@ -1,0 +1,13 @@
+MainSourceFile: 'two.cpp'
+Diagnostics:
+  - DiagnosticName: misc-const-correctness
+    DiagnosticMessage:
+      Message: 'x'
+      FilePath: '../../inc/r.h'
+      FileOffset: 0
+      Replacements:
+        - FilePath: '../../inc/r.h'
+          Offset: 1
+          Length: 0
+          ReplacementText: 'const '
+    BuildDirectory: '/case-rr/b/sub'

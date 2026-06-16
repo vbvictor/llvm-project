@@ -211,6 +211,12 @@ Improvements to clang-tidy
   checks are `clang-diagnostic-*` ones. This allows using
   :program:`clang-tidy` purely as a frontend to Clang's builtin warnings.
 
+- Improved :program:`run-clang-tidy.py` script by deduplicating identical fixes
+  before they are exported or applied. A header shared by several translation
+  units previously produced the same fix multiple times, which could stack when
+  applied (e.g. ``const const int``); now each fix is applied only once,
+  regardless of how the header path was spelled. Requires PyYAML.
+
 New checks
 ^^^^^^^^^^
 

@@ -1,0 +1,17 @@
+MainSourceFile: 'one.cpp'
+Diagnostics:
+  - DiagnosticName: misc-multi-replacement
+    DiagnosticMessage:
+      Message: 'x'
+      FilePath: '/case-mu/h.h'
+      FileOffset: 0
+      Replacements:
+        - FilePath: '/case-mu/h.h'
+          Offset: 1
+          Length: 0
+          ReplacementText: 'a'
+        - FilePath: '/case-mu/h.h'
+          Offset: 9
+          Length: 0
+          ReplacementText: 'b'
+    BuildDirectory: '/case-mu'
