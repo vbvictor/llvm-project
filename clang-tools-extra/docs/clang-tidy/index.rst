@@ -193,6 +193,11 @@ An overview of all the command-line options:
     --export-fixes=<filename>        - YAML file to store suggested fixes in. The
                                        stored fixes can be applied to the input source
                                        code with clang-apply-replacements.
+    --export-sarif=<filename>        - SARIF file to store diagnostics in, using the
+                                       Static Analysis Results Interchange Format
+                                       (https://sarifweb.azurewebsites.net/), for
+                                       consumption by SARIF-compatible tools such as
+                                       GitHub code scanning.
     --extra-arg=<string>             - Additional argument to append to the compiler command line
     --extra-arg-before=<string>      - Additional argument to prepend to the compiler command line
     --fix                            - Apply suggested fixes. Without -fix-errors

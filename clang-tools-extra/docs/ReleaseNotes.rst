@@ -109,6 +109,11 @@ Removed checks
 Miscellaneous
 ^^^^^^^^^^^^^
 
+- Added the :program:`clang-tidy` :option:`--export-sarif=<file>` flag, which
+  serializes the diagnostics found in a run into a SARIF (Static Analysis
+  Results Interchange Format) file, for consumption by SARIF-compatible
+  tools such as GitHub code scanning.
+
 Improvements to include-fixer
 -----------------------------
 

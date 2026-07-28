@@ -24,6 +24,7 @@
 #include "clang/AST/ASTConsumer.h"
 #include "clang/ASTMatchers/ASTMatchFinder.h"
 #include "clang/Basic/DiagnosticFrontend.h"
+#include "clang/Basic/Sarif.h"
 #include "clang/Format/Format.h"
 #include "clang/Frontend/ASTConsumers.h"
 #include "clang/Frontend/CompilerInstance.h"
@@ -36,6 +37,9 @@
 #include "clang/Tooling/DiagnosticsYaml.h" // IWYU pragma: keep
 #include "clang/Tooling/Refactoring.h"
 #include "clang/Tooling/Tooling.h"
+#include "llvm/ADT/StringMap.h"
+#include "llvm/Support/FormatVariadic.h"
+#include "llvm/Support/JSON.h"
 #include "llvm/Support/Process.h"
 #include <memory>
 #include <utility>
@@ -704,6 +708,172 @@ void exportReplacements(const StringRef MainFilePath,
 
   yaml::Output YAML(OS);
   YAML << TUD;
+}
+
+// Maps a DiagnosticsEngine::Level (the space ClangTidyError::DiagLevel is
+// defined over) onto the coarser SarifResultLevel, following the mapping
+// documented in clang/Basic/Sarif.h.
+static SarifResultLevel toSarifResultLevel(const ClangTidyError &Error) {
+  if (Error.IsWarningAsError)
+    return SarifResultLevel::Error;
+  switch (static_cast<DiagnosticsEngine::Level>(Error.DiagLevel)) {
+  case DiagnosticsEngine::Ignored:
+  case DiagnosticsEngine::Remark:
+    return SarifResultLevel::None;
+  case DiagnosticsEngine::Note:
+    return SarifResultLevel::Note;
+  case DiagnosticsEngine::Warning:
+    return SarifResultLevel::Warning;
+  case DiagnosticsEngine::Error:
+  case DiagnosticsEngine::Fatal:
+    return SarifResultLevel::Error;
+  }
+  llvm_unreachable("Unhandled DiagnosticsEngine::Level");
+}
+
+// clang-tidy checks are conventionally named '<module>-<check-name>' and
+// documented at a URL that mirrors this convention. This does not hold for
+// the two pseudo-check prefixes below, which are not clang-tidy checks
+// themselves but compiler diagnostics/analyzer reports surfaced through
+// clang-tidy, and are documented elsewhere.
+static std::string getCheckDocumentationURI(StringRef CheckName) {
+  if (CheckName.starts_with("clang-diagnostic-") ||
+      CheckName.starts_with("clang-analyzer-"))
+    return {};
+  StringRef Module, CheckLeafName;
+  std::tie(Module, CheckLeafName) = CheckName.split('-');
+  if (Module.empty() || CheckLeafName.empty())
+    return {};
+  return ("https://clang.llvm.org/extra/clang-tidy/checks/" + Module + "/" +
+         CheckLeafName + ".html")
+      .str();
+}
+
+void exportSarif(const std::vector<ClangTidyError> &Errors,
+                 llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> BaseFS,
+                 raw_ostream &OS) {
+  FileManager Files(FileSystemOptions(), std::move(BaseFS));
+  DiagnosticOptions DiagOpts;
+  DiagnosticsEngine Diags(DiagnosticIDs::create(), DiagOpts);
+  SourceManager SM(Diags, Files);
+
+  llvm::vfs::FileSystem &VFS = Files.getVirtualFileSystem();
+  llvm::ErrorOr<std::string> InitialWorkingDir =
+      VFS.getCurrentWorkingDirectory();
+
+  // Re-synthesizes the SourceLocation a diagnostic/note/range originally
+  // pointed at. ClangTidyError deliberately carries no SourceManager (it may
+  // outlive the TU it came from, and Errors accumulated across many TUs each
+  // with their own now-destroyed SourceManager), so file paths must be
+  // resolved relative to the build directory that was active when the
+  // diagnostic was produced, mirroring what ErrorReporter::getLocation does
+  // for the text diagnostic path above.
+  auto ResolveFileLocation = [&](StringRef FilePath, unsigned Offset,
+                                StringRef BuildDirectory) -> SourceLocation {
+    if (FilePath.empty())
+      return {};
+    if (!BuildDirectory.empty())
+      VFS.setCurrentWorkingDirectory(BuildDirectory);
+    SmallString<128> AbsoluteFilePath(FilePath);
+    Files.makeAbsolutePath(AbsoluteFilePath);
+    auto File = Files.getOptionalFileRef(AbsoluteFilePath);
+    SourceLocation Loc;
+    if (File) {
+      const FileID ID = SM.getOrCreateFileID(*File, SrcMgr::C_User);
+      Loc = SM.getLocForStartOfFile(ID).getLocWithOffset(Offset);
+    }
+    if (InitialWorkingDir)
+      VFS.setCurrentWorkingDirectory(*InitialWorkingDir);
+    return Loc;
+  };
+
+  auto GetLocation = [&](const tooling::DiagnosticMessage &Message,
+                        StringRef BuildDirectory) -> SourceLocation {
+    return ResolveFileLocation(Message.FilePath, Message.FileOffset,
+                               BuildDirectory);
+  };
+
+  // FileByteRanges are captured live off the diagnostic engine's real
+  // CharSourceRanges (Info.getRanges()/FixItHint ranges, already unfurled
+  // from token ranges and resolved through the original SourceManager) when
+  // ClangTidyDiagnosticConsumer builds each ClangTidyError, so resolving them
+  // back to a CharSourceRange here reproduces the original underline extent
+  // rather than a synthesized zero-length point.
+  auto GetCharRange = [&](const tooling::FileByteRange &Range,
+                        StringRef BuildDirectory) -> CharSourceRange {
+    const SourceLocation Begin =
+        ResolveFileLocation(Range.FilePath, Range.FileOffset, BuildDirectory);
+    if (Begin.isInvalid())
+      return {};
+    return CharSourceRange::getCharRange(Begin,
+                                         Begin.getLocWithOffset(Range.Length));
+  };
+
+  SarifDocumentWriter Writer(SM);
+  Writer.createRun("clang-tidy", "clang-tidy");
+
+  llvm::StringMap<size_t> RuleIndices;
+  for (const ClangTidyError &Error : Errors) {
+    if (RuleIndices.contains(Error.DiagnosticName))
+      continue;
+    SarifRule Rule = SarifRule::create()
+                        .setName(Error.DiagnosticName)
+                        .setRuleId(Error.DiagnosticName);
+    const std::string HelpURI = getCheckDocumentationURI(Error.DiagnosticName);
+    if (!HelpURI.empty())
+      Rule = Rule.setHelpURI(HelpURI);
+    RuleIndices[Error.DiagnosticName] = Writer.createRule(Rule);
+  }
+
+  for (const ClangTidyError &Error : Errors) {
+    const SourceLocation Loc = GetLocation(Error.Message, Error.BuildDirectory);
+    if (Loc.isInvalid())
+      continue;
+
+    SmallVector<CharSourceRange, 4> Locations;
+    for (const tooling::FileByteRange &Range : Error.Message.Ranges) {
+      const CharSourceRange CharRange = GetCharRange(Range, Error.BuildDirectory);
+      if (CharRange.getBegin().isValid())
+        Locations.push_back(CharRange);
+    }
+    if (Locations.empty())
+      Locations.push_back(CharSourceRange::getCharRange(Loc, Loc));
+
+    SmallVector<ThreadFlow, 4> Notes;
+    for (const tooling::DiagnosticMessage &Note : Error.Notes) {
+      SmallVector<CharSourceRange, 2> NoteRanges;
+      for (const tooling::FileByteRange &Range : Note.Ranges) {
+        const CharSourceRange CharRange =
+            GetCharRange(Range, Error.BuildDirectory);
+        if (CharRange.getBegin().isValid())
+          NoteRanges.push_back(CharRange);
+      }
+      if (NoteRanges.empty()) {
+        const SourceLocation NoteLoc = GetLocation(Note, Error.BuildDirectory);
+        if (NoteLoc.isInvalid())
+          continue;
+        NoteRanges.push_back(CharSourceRange::getCharRange(NoteLoc, NoteLoc));
+      }
+      for (const CharSourceRange &NoteRange : NoteRanges)
+        Notes.push_back(ThreadFlow::create()
+                            .setRange(NoteRange)
+                            .setImportance(ThreadFlowImportance::Important)
+                            .setMessage(Note.Message));
+    }
+
+    SarifResult Result =
+        SarifResult::create(RuleIndices.lookup(Error.DiagnosticName))
+            .setRuleId(Error.DiagnosticName)
+            .setDiagnosticMessage(Error.Message.Message)
+            .setDiagnosticLevel(toSarifResultLevel(Error))
+            .addLocations(Locations);
+    if (!Notes.empty())
+      Result = Result.setThreadFlows(Notes);
+    Writer.appendResult(Result);
+  }
+
+  OS << llvm::formatv("{0:2}", llvm::json::Value(Writer.createDocument()))
+     << "\n";
 }
 
 ChecksAndOptions getAllChecksAndOptions(bool AllowEnablingAnalyzerAlphaCheckers,

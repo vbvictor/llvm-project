@@ -311,6 +311,16 @@ code with clang-apply-replacements.
                                         cl::value_desc("filename"),
                                         cl::cat(ClangTidyCategory));
 
+static cl::opt<std::string> ExportSarif("export-sarif", desc(R"(
+SARIF file to store diagnostics in, using the
+Static Analysis Results Interchange Format
+(https://sarifweb.azurewebsites.net/), for
+consumption by SARIF-compatible tools such as
+GitHub code scanning.
+)"),
+                                        cl::value_desc("filename"),
+                                        cl::cat(ClangTidyCategory));
+
 static cl::opt<bool> Quiet("quiet", desc(R"(
 Run clang-tidy in quiet mode. This suppresses
 printing statistics about ignored warnings and
@@ -764,6 +774,16 @@ int clangTidyMain(int argc, const char **argv) {
       return 1;
     }
     exportReplacements(FilePath.str(), Errors, OS);
+  }
+
+  if (!ExportSarif.empty()) {
+    std::error_code EC;
+    llvm::raw_fd_ostream OS(ExportSarif, EC, llvm::sys::fs::OF_None);
+    if (EC) {
+      llvm::errs() << "Error opening output file: " << EC.message() << '\n';
+      return 1;
+    }
+    exportSarif(Errors, BaseFS, OS);
   }
 
   if (!Quiet) {

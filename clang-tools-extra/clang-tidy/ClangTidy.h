@@ -126,6 +126,13 @@ void exportReplacements(StringRef MainFilePath,
                         const std::vector<ClangTidyError> &Errors,
                         raw_ostream &OS);
 
+/// Serializes diagnostics into SARIF (Static Analysis Results Interchange
+/// Format, see https://sarifweb.azurewebsites.net/) and writes them to the
+/// specified output stream.
+void exportSarif(const std::vector<ClangTidyError> &Errors,
+                 llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> BaseFS,
+                 raw_ostream &OS);
+
 namespace custom {
 extern void (*RegisterCustomChecks)(const ClangTidyOptions &O,
                                     ClangTidyCheckFactories &Factories);
