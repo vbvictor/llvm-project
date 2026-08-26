@@ -160,12 +160,14 @@ cast expression. In this case, the declaration type can be replaced with
   auto *my_pointer = static_cast<TypeName>(my_param);
 
 The check handles ``static_cast``, ``dynamic_cast``, ``const_cast``,
-``reinterpret_cast``, functional casts, C-style casts and function templates
-that behave as casts, such as ``llvm::dyn_cast``, ``boost::lexical_cast`` and
-``gsl::narrow_cast``. Calls to function templates are considered to behave as
-casts if the first template argument is explicit and is a type, and the
-function returns that type, or a pointer or reference to it.
-
+``reinterpret_cast``, functional casts, smart pointer casts, C-style casts and
+function templates that behave as casts, such as ``llvm::dyn_cast``,
+``boost::lexical_cast`` and ``gsl::narrow_cast``. Calls to function templates
+are considered to behave as casts if the first template argument is explicit
+and is a type, and the function returns that type, or a pointer or reference
+to the type, or a smart pointer holding that type, such as
+``std::static_pointer_cast``. To specify smart pointers or other classes use
+the :option:`SmartPointers` option.
 
 Limitations
 -----------
@@ -232,3 +234,10 @@ Options
   // RemoveStars = 1
 
   auto my_first_pointer = new TypeName, my_second_pointer = new TypeName;
+
+.. option:: SmartPointers
+
+   Semicolon-separated list of fully qualified class names of smart pointers
+   to recognize as valid return types for cast-like function templates, in
+   addition to raw pointers and references. Default value is
+   `::std::shared_ptr;::boost::shared_ptr`.

@@ -125,6 +125,12 @@ infrastructure are described first, followed by tool-specific sections.
   `std::initializer_list` constructor, as the braced form could select a
   different constructor.
 
+- Improved {doc}`modernize-use-auto
+  <clang-tidy/checks/modernize/use-auto>` check to also recognize casts
+  performed through smart pointers, such as `std::static_pointer_cast`.
+  Added the {option}`SmartPointers` option to customize the set of
+  recognized smart pointer types.
+
 - Improved {doc}`readability-named-parameter
   <clang-tidy/checks/readability/named-parameter>` check by ignoring
   standard tag types (e.g. `std::in_place_t`, `std::allocator_arg_t`,

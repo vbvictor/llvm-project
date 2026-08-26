@@ -7,13 +7,16 @@
 //===----------------------------------------------------------------------===//
 
 #include "UseAutoCheck.h"
+#include "../utils/OptionsUtils.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/TypeLoc.h"
 #include "clang/ASTMatchers/ASTMatchFinder.h"
 #include "clang/ASTMatchers/ASTMatchers.h"
 #include "clang/Basic/CharInfo.h"
 #include "clang/Tooling/FixIt.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/StringRef.h"
 
 using namespace clang;
 using namespace clang::ast_matchers;
@@ -25,6 +28,8 @@ static constexpr char IteratorDeclStmtId[] = "iterator_decl";
 static constexpr char DeclWithNewId[] = "decl_new";
 static constexpr char DeclWithCastId[] = "decl_cast";
 static constexpr char DeclWithTemplateCastId[] = "decl_template";
+static constexpr char DefaultSmartPointers[] =
+    "::std::shared_ptr;::boost::shared_ptr";
 
 static size_t getTypeNameLength(bool RemoveStars, StringRef Text) {
   enum CharType { Space, Alpha, Punctuation };
@@ -234,7 +239,8 @@ static StatementMatcher makeDeclWithCastMatcher() {
       .bind(DeclWithCastId);
 }
 
-static StatementMatcher makeDeclWithTemplateCastMatcher() {
+static StatementMatcher
+makeDeclWithTemplateCastMatcher(ArrayRef<StringRef> SmartPointers) {
   auto ST =
       substTemplateTypeParmType(hasReplacementType(equalsBoundNode("arg")));
 
@@ -245,17 +251,25 @@ static StatementMatcher makeDeclWithTemplateCastMatcher() {
   const auto TemplateArg =
       hasTemplateArgument(0, refersToType(qualType().bind("arg")));
 
-  const auto TemplateCall = callExpr(
-      ExplicitCall,
-      callee(functionDecl(TemplateArg,
-                          returns(anyOf(ST, pointsTo(ST), references(ST))))));
+  const auto DirectTemplateReturn =
+      returns(anyOf(ST, pointsTo(ST), references(ST)));
+
+  const auto SmartPointerReturn = returns(templateSpecializationType(
+      hasDeclaration(cxxRecordDecl(hasAnyName(SmartPointers))),
+      hasTemplateArgument(0, refersToType(ST))));
+
+  const auto TemplateCall =
+      callExpr(ExplicitCall,
+               callee(functionDecl(TemplateArg, anyOf(DirectTemplateReturn,
+                                                      SmartPointerReturn))));
 
   return declStmt(unless(has(varDecl(
-                      unless(hasInitializer(ignoringImplicit(TemplateCall)))))))
+                      unless(hasInitializer(ignoringElidableConstructorCall(
+                          ignoringImplicit(TemplateCall))))))))
       .bind(DeclWithTemplateCastId);
 }
 
-static StatementMatcher makeCombinedMatcher() {
+static StatementMatcher makeCombinedMatcher(ArrayRef<StringRef> SmartPointers) {
   return declStmt(
       // At least one varDecl should be a child of the declStmt to ensure
       // it's a declaration list and avoid matching other declarations,
@@ -265,21 +279,27 @@ static StatementMatcher makeCombinedMatcher() {
       unless(has(varDecl(anyOf(hasType(autoType()),
                                hasType(qualType(hasDescendant(autoType()))))))),
       anyOf(makeIteratorDeclMatcher(), makeDeclWithNewMatcher(),
-            makeDeclWithCastMatcher(), makeDeclWithTemplateCastMatcher()));
+            makeDeclWithCastMatcher(),
+            makeDeclWithTemplateCastMatcher(SmartPointers)));
 }
 
 UseAutoCheck::UseAutoCheck(StringRef Name, ClangTidyContext *Context)
     : ClangTidyCheck(Name, Context),
       MinTypeNameLength(Options.get("MinTypeNameLength", 5)),
-      RemoveStars(Options.get("RemoveStars", false)) {}
+      RemoveStars(Options.get("RemoveStars", false)),
+      SmartPointers(utils::options::parseStringList(
+          Options.get("SmartPointers", DefaultSmartPointers))) {}
 
 void UseAutoCheck::storeOptions(ClangTidyOptions::OptionMap &Opts) {
   Options.store(Opts, "MinTypeNameLength", MinTypeNameLength);
   Options.store(Opts, "RemoveStars", RemoveStars);
+  Options.store(Opts, "SmartPointers",
+                utils::options::serializeStringList(SmartPointers));
 }
 
 void UseAutoCheck::registerMatchers(MatchFinder *Finder) {
-  Finder->addMatcher(traverse(TK_AsIs, makeCombinedMatcher()), this);
+  Finder->addMatcher(traverse(TK_AsIs, makeCombinedMatcher(SmartPointers)),
+                     this);
 }
 
 void UseAutoCheck::replaceIterators(const DeclStmt *D, ASTContext *Context) {
@@ -354,6 +374,20 @@ static bool isMultiLevelPointerToTypeLocClasses(
   return llvm::is_contained(LocClasses, Loc.getTypeLocClass());
 }
 
+/// Strips an elidable copy/move constructor call (and the
+/// \c MaterializeTemporaryExpr wrapping its argument) that the compiler
+/// inserts when initializing a class-type variable, such as a smart pointer,
+/// from a prvalue returned by a cast-like function template.
+static const Expr *skipElidableConstructorCall(const Expr *E) {
+  const auto *Construct = dyn_cast<CXXConstructExpr>(E);
+  if (!Construct || !Construct->isElidable() || Construct->getNumArgs() != 1)
+    return E;
+  if (const auto *Temp =
+          dyn_cast<MaterializeTemporaryExpr>(Construct->getArg(0)))
+    return Temp->getSubExpr()->IgnoreParenImpCasts();
+  return E;
+}
+
 void UseAutoCheck::replaceExpr(
     const DeclStmt *D, ASTContext *Context,
     llvm::function_ref<QualType(const Expr *)> GetType, StringRef Message) {
@@ -375,7 +409,8 @@ void UseAutoCheck::replaceExpr(
     if (!V)
       return;
 
-    const auto *Expr = V->getInit()->IgnoreParenImpCasts();
+    const auto *Expr =
+        skipElidableConstructorCall(V->getInit()->IgnoreParenImpCasts());
     // Ensure that every VarDecl has an initializer.
     if (!Expr)
       return;

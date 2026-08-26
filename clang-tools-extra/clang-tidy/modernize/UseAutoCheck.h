@@ -10,6 +10,7 @@
 #define LLVM_CLANG_TOOLS_EXTRA_CLANG_TIDY_MODERNIZE_USEAUTOCHECK_H
 
 #include "../ClangTidyCheck.h"
+#include <vector>
 
 namespace clang::tidy::modernize {
 
@@ -31,6 +32,7 @@ private:
 
   const unsigned int MinTypeNameLength;
   const bool RemoveStars;
+  const std::vector<StringRef> SmartPointers;
 };
 
 } // namespace clang::tidy::modernize
