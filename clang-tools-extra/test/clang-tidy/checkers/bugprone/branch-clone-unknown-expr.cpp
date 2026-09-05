@@ -1,4 +1,4 @@
-// RUN: %check_clang_tidy -expect-clang-tidy-error %s bugprone-branch-clone %t
+// RUN: %check_clang_tidy -expect-clang-tidy-error %s bugprone-branch-clone %t -- --allow-compilation-errors
 
 int test_unknown_expression() {
   if (unknown_expression_1) {        // CHECK-MESSAGES: :[[@LINE]]:7: error: use of undeclared identifier 'unknown_expression_1' [clang-diagnostic-error]

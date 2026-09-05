@@ -1,4 +1,4 @@
-// RUN: %check_clang_tidy -expect-clang-tidy-error %s modernize-use-noexcept %t
+// RUN: %check_clang_tidy -expect-clang-tidy-error %s modernize-use-noexcept %t -- --allow-compilation-errors
 
 // We're not interested in the check issuing a warning here, just making sure
 // clang-tidy doesn't assert.

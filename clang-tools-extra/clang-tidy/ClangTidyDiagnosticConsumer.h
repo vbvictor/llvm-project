@@ -218,6 +218,23 @@ public:
   // enabled with `--experimental-custom-checks`
   bool canExperimentalCustomChecks() const { return ExperimentalCustomChecks; }
 
+  /// Controls whether checks should be run on translation units that have
+  /// compilation errors.
+  void setAllowCompilationErrors(bool Allow) { AllowCompilationErrors = Allow; }
+  bool getAllowCompilationErrors() const { return AllowCompilationErrors; }
+
+  /// Records that the analysis of the current translation unit was skipped
+  /// because of compilation errors.
+  void recordSkippedTranslationUnit() {
+    SkippedTranslationUnits.push_back(CurrentFile);
+  }
+
+  /// Returns source files of the translation units whose analysis was
+  /// skipped because of compilation errors.
+  SmallVector<std::string> getSkippedTranslationUnits() const {
+    return SkippedTranslationUnits;
+  }
+
   void setSelfContainedDiags(bool Value) { SelfContainedDiags = Value; }
 
   bool areDiagsSelfContained() const { return SelfContainedDiags; }
@@ -267,6 +284,9 @@ private:
   bool AllowEnablingAnalyzerAlphaCheckers;
   bool EnableModuleHeadersParsing;
   bool ExperimentalCustomChecks;
+
+  bool AllowCompilationErrors = false;
+  SmallVector<std::string> SkippedTranslationUnits;
 
   bool SelfContainedDiags = false;
 

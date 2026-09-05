@@ -137,6 +137,11 @@ An overview of all the command-line options:
 
   clang-tidy options:
 
+    --allow-compilation-errors       - Run checks even if compilation errors were
+                                       found in source file. Running clang-tidy
+                                       with compiler errors may result in incorrect
+                                       diagnostics or crashes.
+                                       This flag is implied by '--fix-errors'.
     --allow-no-checks                - Allow empty enabled checks. This suppresses
                                        the "no checks enabled" error when disabling
                                        all of the checks.
@@ -201,6 +206,8 @@ An overview of all the command-line options:
                                        errors were found. If compiler errors have
                                        attached fix-its, clang-tidy will apply them as
                                        well.
+                                       Specifying this flag will implicitly enable the
+                                       '--allow-compilation-errors' flag.
     --fix-notes                      - If a warning has no fix, but a single fix can
                                        be found through an associated diagnostic note,
                                        apply the fix.

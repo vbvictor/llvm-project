@@ -1,4 +1,4 @@
-// RUN: %check_clang_tidy -expect-clang-tidy-error %s altera-struct-pack-align %t -- -header-filter=.*
+// RUN: %check_clang_tidy -expect-clang-tidy-error %s altera-struct-pack-align %t -- -header-filter=.* --allow-compilation-errors
 
 struct Foo {
   member; // no-crash

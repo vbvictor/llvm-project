@@ -207,6 +207,16 @@ Specifying this flag will implicitly enable the
 )"),
                               cl::init(false), cl::cat(ClangTidyCategory));
 
+static cl::opt<bool> AllowCompilationErrors("allow-compilation-errors", desc(R"(
+Run checks even if compilation errors were
+found in source file. Running clang-tidy
+with compiler errors may result in incorrect
+diagnostics or crashes.
+This flag is implied by '--fix-errors'.
+)"),
+                                            cl::init(false),
+                                            cl::cat(ClangTidyCategory));
+
 static cl::opt<std::string> FormatStyle("format-style", desc(R"(
 Style for formatting code around applied fixes:
   - 'none' (default) turns off formatting
@@ -737,6 +747,7 @@ int clangTidyMain(int argc, const char **argv) {
   ClangTidyContext Context(
       std::move(OwningOptionsProvider), AllowEnablingAnalyzerAlphaCheckers,
       EnableModuleHeadersParsing, ExperimentalCustomChecks);
+  Context.setAllowCompilationErrors(AllowCompilationErrors || FixErrors);
   std::vector<ClangTidyError> Errors =
       runClangTidy(Context, OptionsParser->getCompilations(), PathList, BaseFS,
                    FixNotes, EnableCheckProfile, ProfilePrefix, Quiet);
@@ -772,6 +783,10 @@ int clangTidyMain(int argc, const char **argv) {
       llvm::errs()
           << "Found compiler errors, but -fix-errors was not specified.\n"
              "Fixes have NOT been applied.\n\n";
+    for (const std::string &SkippedFile : Context.getSkippedTranslationUnits())
+      llvm::errs() << "File '" << SkippedFile
+                   << "' is skipped due to compiler errors.\n"
+                      "Use -allow-compilation-errors to run checks anyway.\n\n";
   }
 
   if (WErrorCount) {
