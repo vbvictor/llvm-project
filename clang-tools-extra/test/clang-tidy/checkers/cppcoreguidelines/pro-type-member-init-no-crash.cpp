@@ -1,4 +1,4 @@
-// RUN: %check_clang_tidy -expect-clang-tidy-error %s cppcoreguidelines-pro-type-member-init %t
+// RUN: %check_clang_tidy -expect-clang-tidy-error %s cppcoreguidelines-pro-type-member-init %t -- --allow-compilation-errors
 
 struct X {
   X x;

@@ -675,6 +675,31 @@ TEST(DiagnosticTest, ClangTidyWarningAsError) {
           diagSeverity(DiagnosticsEngine::Error)))));
 }
 
+TEST(DiagnosticTest, ClangTidyRunsWithCompilationErrors) {
+  Annotations Main(R"cpp( // error-ok
+    int main() {
+      int i = 3;
+      double f = $div[[8]] / i;
+      $err[[unknown]]();
+    }
+  )cpp");
+  TestTU TU = TestTU::withCode(Main.code());
+  TU.ClangTidyProvider = addTidyChecks("bugprone-integer-division");
+  ParsedAST AST = TU.build();
+  auto Diags = AST.getDiagnostics();
+  EXPECT_THAT(
+      Diags,
+      Contains(::testing::AllOf(
+          Diag(Main.range("err"), "use of undeclared identifier 'unknown'"),
+          diagSource(Diag::Clang), diagSeverity(DiagnosticsEngine::Error))));
+  EXPECT_THAT(Diags, Contains(::testing::AllOf(
+                         Diag(Main.range("div"),
+                              "result of integer division used in a floating "
+                              "point context; possible loss of precision"),
+                         diagSource(Diag::ClangTidy),
+                         diagName("bugprone-integer-division"))));
+}
+
 TidyProvider addClangArgs(std::vector<llvm::StringRef> ExtraArgs,
                           llvm::StringRef Checks) {
   return [ExtraArgs = std::move(ExtraArgs), Checks = Checks.str()](

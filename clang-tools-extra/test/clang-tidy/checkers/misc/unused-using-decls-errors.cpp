@@ -1,4 +1,4 @@
-// RUN: %check_clang_tidy -expect-clang-tidy-error %s misc-unused-using-decls %t
+// RUN: %check_clang_tidy -expect-clang-tidy-error %s misc-unused-using-decls %t -- --allow-compilation-errors
 
 namespace n {
 class C;

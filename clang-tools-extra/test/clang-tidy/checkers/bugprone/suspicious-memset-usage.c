@@ -1,4 +1,4 @@
-// RUN: %check_clang_tidy  -expect-clang-tidy-error  %s bugprone-suspicious-memset-usage %t
+// RUN: %check_clang_tidy  -expect-clang-tidy-error  %s bugprone-suspicious-memset-usage %t -- --allow-compilation-errors
 
 void *memset(void *, int, __SIZE_TYPE__);
 void *memset(void *);

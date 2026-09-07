@@ -1,4 +1,4 @@
-// RUN: %check_clang_tidy -expect-clang-tidy-error %s readability-identifier-naming %t
+// RUN: %check_clang_tidy -expect-clang-tidy-error %s readability-identifier-naming %t -- --allow-compilation-errors
 
 // This used to cause a null pointer dereference.
 auto [left] = right;
