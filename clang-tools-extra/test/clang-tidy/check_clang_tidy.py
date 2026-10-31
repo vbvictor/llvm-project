@@ -283,6 +283,14 @@ class CheckRunner:
             + [
                 f"--checks=-*,{self.check_name}",
             ]
+            # A test that feeds clang-tidy code which does not compile is only
+            # meaningful if the checks actually run over the broken AST, so opt
+            # out of skipping such translation units.
+            + (
+                ["--allow-compilation-errors"]
+                if self.expect_clang_tidy_error
+                else []
+            )
             + self.clang_tidy_extra_args
             + ["--"]
             + self.clang_extra_args

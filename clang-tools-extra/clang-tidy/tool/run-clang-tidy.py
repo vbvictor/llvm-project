@@ -107,6 +107,7 @@ def get_tidy_invocation(
     warnings_as_errors: Optional[str],
     exclude_header_filter: Optional[str],
     allow_no_checks: bool,
+    allow_compilation_errors: bool,
     store_check_profile: Optional[str],
 ) -> List[str]:
     """Gets a command line for clang-tidy."""
@@ -152,6 +153,8 @@ def get_tidy_invocation(
         start.append(f"--warnings-as-errors={warnings_as_errors}")
     if allow_no_checks:
         start.append("--allow-no-checks")
+    if allow_compilation_errors:
+        start.append("--allow-compilation-errors")
     if store_check_profile:
         start.append("--enable-check-profile")
         start.append(f"--store-check-profile={store_check_profile}")
@@ -391,6 +394,7 @@ async def run_tidy(
         args.warnings_as_errors,
         args.exclude_header_filter,
         args.allow_no_checks,
+        args.allow_compilation_errors,
         store_check_profile,
     )
 
@@ -584,6 +588,11 @@ async def main() -> None:
         help="Allow empty enabled checks.",
     )
     parser.add_argument(
+        "-allow-compilation-errors",
+        action="store_true",
+        help="Run checks even on files with compilation errors.",
+    )
+    parser.add_argument(
         "-enable-check-profile",
         action="store_true",
         help="Enable per-check timing profiles, and print a report",
@@ -660,6 +669,7 @@ async def main() -> None:
             args.warnings_as_errors,
             args.exclude_header_filter,
             args.allow_no_checks,
+            args.allow_compilation_errors,
             None,  # No profiling for the list-checks invocation
         )
         invocation.append("-list-checks")

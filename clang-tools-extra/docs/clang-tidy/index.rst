@@ -117,6 +117,16 @@ failures that must be fixed before :program:`clang-tidy` can perform its
 analysis. Unlike other diagnostics, ``clang-diagnostic-error`` cannot be
 disabled, as :program:`clang-tidy` requires valid code to function.
 
+A translation unit that does not compile has an incomplete AST, so checks
+running over it are prone to false positives and crashes. :program:`clang-tidy`
+therefore skips such a translation unit: only the compiler diagnostics are
+reported, together with a message naming the skipped file. Pass
+``--allow-compilation-errors`` (implied by ``--fix-errors``) to run the checks
+anyway. This does not affect ``clang-analyzer-*`` checks, which the static
+analyzer skips on broken code on its own, and it does not affect
+:program:`clangd`, which keeps reporting :program:`clang-tidy` diagnostics for
+the file being edited.
+
 The ``-fix`` flag instructs :program:`clang-tidy` to fix found errors if
 supported by corresponding checks.
 
@@ -137,6 +147,13 @@ An overview of all the command-line options:
 
   clang-tidy options:
 
+    --allow-compilation-errors       - Run checks even if compilation errors were
+                                       found in source file. Running clang-tidy
+                                       with compiler errors may result in incorrect
+                                       diagnostics or crashes.
+                                       Does not apply to 'clang-analyzer-*' checks,
+                                       which the static analyzer skips on its own.
+                                       This flag is implied by '--fix-errors'.
     --allow-no-checks                - Allow empty enabled checks. This suppresses
                                        the "no checks enabled" error when disabling
                                        all of the checks.
@@ -201,6 +218,8 @@ An overview of all the command-line options:
                                        errors were found. If compiler errors have
                                        attached fix-its, clang-tidy will apply them as
                                        well.
+                                       Specifying this flag will implicitly enable the
+                                       '--allow-compilation-errors' flag.
     --fix-notes                      - If a warning has no fix, but a single fix can
                                        be found through an associated diagnostic note,
                                        apply the fix.

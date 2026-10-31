@@ -64,6 +64,16 @@ infrastructure are described first, followed by tool-specific sections.
   All of the symbols it used to define were moved into `clang-tidy/ClangTidyModule.h`.
   The deprecated header has been removed in this release.
 
+- {program}`clang-tidy` no longer runs checks on a translation unit that fails
+  to compile. Such a translation unit has an incomplete AST, which makes checks
+  report false positives or crash. Only the compiler diagnostics are reported
+  now, along with a message naming the skipped file; the exit code is unchanged,
+  as compiler errors already made {program}`clang-tidy` fail. Pass the new
+  `--allow-compilation-errors` option (implied by `--fix-errors`, and also
+  available in {program}`run-clang-tidy.py`) to restore the previous behavior.
+  {program}`clangd` is not affected and keeps reporting {program}`clang-tidy`
+  diagnostics for files that do not compile.
+
 ### Improvements to clangd
 
 #### Inlay hints

@@ -1,4 +1,4 @@
-// RUN: not clang-tidy %s \
+// RUN: not clang-tidy %s --allow-compilation-errors \
 // RUN:     -checks="-*,bugprone-suspicious-semicolon" -- -DERROR 2>&1 \
 // RUN:   | FileCheck %s -check-prefix=CHECK-ERROR \
 // RUN:       -implicit-check-not="{{warning|error}}:"

@@ -38,6 +38,7 @@
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/Regex.h"
+#include <algorithm>
 #include <optional>
 #include <tuple>
 #include <utility>
@@ -239,6 +240,7 @@ static bool parseFileExtensions(llvm::ArrayRef<std::string> AllFileExtensions,
 
 void ClangTidyContext::setCurrentFile(StringRef File) {
   CurrentFile = std::string(File);
+  CurrentFileSkipped = false;
   CurrentOptions = getOptionsForFile(CurrentFile);
   CheckFilter = std::make_unique<CachedGlobList>(
       StringRef(getOptions().Checks.value_or("")));
@@ -327,7 +329,8 @@ ClangTidyDiagnosticConsumer::ClangTidyDiagnosticConsumer(
       EnableNolintBlocks(EnableNolintBlocks) {}
 
 void ClangTidyDiagnosticConsumer::finalizeLastError() {
-  if (!Errors.empty()) {
+  if (HasPendingError) {
+    HasPendingError = false;
     const ClangTidyError &Error = Errors.back();
     if (Error.DiagnosticName == "clang-tidy-config") {
       // Never ignore these.
@@ -377,13 +380,35 @@ void ClangTidyDiagnosticConsumer::BeginSourceFile(const LangOptions &LangOpts,
 
   assert(!InSourceFile);
   InSourceFile = true;
+  // The last diagnostic of the previous translation unit can no longer gain
+  // notes, so settle it before recording where this file's diagnostics start.
+  // Otherwise finalizing it later could drop it and shift the index.
+  finalizeLastError();
+  FirstErrorOfCurrentFile = Errors.size();
 }
 
 void ClangTidyDiagnosticConsumer::EndSourceFile() {
   assert(InSourceFile);
   InSourceFile = false;
 
+  if (Context.isCurrentFileSkipped()) {
+    finalizeLastError();
+    removeCheckDiagnosticsOfCurrentFile();
+  }
+
   DiagnosticConsumer::EndSourceFile();
+}
+
+void ClangTidyDiagnosticConsumer::removeCheckDiagnosticsOfCurrentFile() {
+  const auto IsCheckDiagnostic = [](const ClangTidyError &Error) {
+    // Compiler diagnostics are the whole point of reporting a skipped file, and
+    // configuration errors are never suppressed.
+    return !StringRef(Error.DiagnosticName).starts_with("clang-diagnostic-") &&
+           Error.DiagnosticName != "clang-tidy-config";
+  };
+  const auto Begin = Errors.begin() + FirstErrorOfCurrentFile;
+  Errors.erase(std::remove_if(Begin, Errors.end(), IsCheckDiagnostic),
+               Errors.end());
 }
 
 void ClangTidyDiagnosticConsumer::HandleDiagnostic(
@@ -452,6 +477,7 @@ void ClangTidyDiagnosticConsumer::HandleDiagnostic(
                                   Context.treatAsError(CheckName);
     Errors.emplace_back(CheckName, Level, Context.getCurrentBuildDirectory(),
                         IsWarningAsError);
+    HasPendingError = true;
   }
 
   if (ExternalDiagEngine) {

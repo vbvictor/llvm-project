@@ -207,6 +207,16 @@ Specifying this flag will implicitly enable the
 )"),
                               cl::init(false), cl::cat(ClangTidyCategory));
 
+static cl::opt<bool> AllowCompilationErrors("allow-compilation-errors", desc(R"(
+Run checks even if compilation errors were
+found in source file. Running clang-tidy
+with compiler errors may result in incorrect
+diagnostics or crashes.
+This flag is implied by '--fix-errors'.
+)"),
+                                            cl::init(false),
+                                            cl::cat(ClangTidyCategory));
+
 static cl::opt<std::string> FormatStyle("format-style", desc(R"(
 Style for formatting code around applied fixes:
   - 'none' (default) turns off formatting
@@ -737,6 +747,9 @@ int clangTidyMain(int argc, const char **argv) {
   ClangTidyContext Context(
       std::move(OwningOptionsProvider), AllowEnablingAnalyzerAlphaCheckers,
       EnableModuleHeadersParsing, ExperimentalCustomChecks);
+  // --fix-errors implies --allow-compilation-errors: applying fixes to code
+  // that does not compile requires running the checks on it in the first place.
+  Context.setAllowCompilationErrors(AllowCompilationErrors || FixErrors);
   std::vector<ClangTidyError> Errors =
       runClangTidy(Context, OptionsParser->getCompilations(), PathList, BaseFS,
                    FixNotes, EnableCheckProfile, ProfilePrefix, Quiet);
@@ -768,7 +781,15 @@ int clangTidyMain(int argc, const char **argv) {
 
   if (!Quiet) {
     printStats(Context.getStats());
-    if (DisableFixes && Behaviour != FB_NoFix)
+    const ArrayRef<std::string> SkippedFiles = Context.getSkippedFiles();
+    for (const std::string &SkippedFile : SkippedFiles)
+      llvm::errs() << "File '" << SkippedFile
+                   << "' was skipped due to compiler errors.\n"
+                      "Use -allow-compilation-errors to run checks anyway.\n\n";
+    // If every file was skipped, no check ever ran, so there were no fixes to
+    // withhold in the first place and the message below would be misleading.
+    if (DisableFixes && Behaviour != FB_NoFix &&
+        SkippedFiles.size() < PathList.size())
       llvm::errs()
           << "Found compiler errors, but -fix-errors was not specified.\n"
              "Fixes have NOT been applied.\n\n";

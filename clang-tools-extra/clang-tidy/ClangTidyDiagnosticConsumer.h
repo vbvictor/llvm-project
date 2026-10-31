@@ -218,6 +218,26 @@ public:
   // enabled with `--experimental-custom-checks`
   bool canExperimentalCustomChecks() const { return ExperimentalCustomChecks; }
 
+  /// Controls whether checks should be run on translation units that have
+  /// compilation errors.
+  void setAllowCompilationErrors(bool Allow) { AllowCompilationErrors = Allow; }
+  bool getAllowCompilationErrors() const { return AllowCompilationErrors; }
+
+  /// Records that the analysis of the current translation unit was skipped
+  /// because of compilation errors.
+  void recordSkippedFile() {
+    CurrentFileSkipped = true;
+    SkippedFiles.push_back(CurrentFile);
+  }
+
+  /// Returns \c true if the analysis of the \c CurrentFile was skipped because
+  /// of compilation errors.
+  bool isCurrentFileSkipped() const { return CurrentFileSkipped; }
+
+  /// Returns the main source files of the translation units whose analysis was
+  /// skipped because of compilation errors, in the order they were processed.
+  ArrayRef<std::string> getSkippedFiles() const { return SkippedFiles; }
+
   void setSelfContainedDiags(bool Value) { SelfContainedDiags = Value; }
 
   bool areDiagsSelfContained() const { return SelfContainedDiags; }
@@ -246,6 +266,7 @@ private:
 
   std::string CurrentFile;
   ClangTidyOptions CurrentOptions;
+  bool CurrentFileSkipped;
 
   std::unique_ptr<CachedGlobList> CheckFilter;
   std::unique_ptr<CachedGlobList> WarningAsErrorFilter;
@@ -267,6 +288,8 @@ private:
   bool AllowEnablingAnalyzerAlphaCheckers;
   bool EnableModuleHeadersParsing;
   bool ExperimentalCustomChecks;
+  bool AllowCompilationErrors = false;
+  SmallVector<std::string> SkippedFiles;
 
   bool SelfContainedDiags = false;
 
@@ -314,6 +337,13 @@ private:
   void removeIncompatibleErrors();
   void removeDuplicatedDiagnosticsOfAliasCheckers();
 
+  /// Drops the diagnostics that checks produced for the current translation
+  /// unit, keeping the compiler diagnostics. Used when the analysis of the
+  /// translation unit was skipped because of compilation errors: checks that
+  /// only run over the preprocessor have already reported by then, and
+  /// reporting them for a file we claim to have skipped is confusing.
+  void removeCheckDiagnosticsOfCurrentFile();
+
   /// Returns the \c HeaderFilter constructed for the options set in the
   /// context.
   llvm::Regex *getHeaderFilter();
@@ -338,6 +368,12 @@ private:
   std::vector<ClangTidyError> Errors;
   std::unique_ptr<llvm::Regex> HeaderFilter;
   std::unique_ptr<llvm::Regex> ExcludeHeaderFilter;
+  /// Index into \c Errors of the first diagnostic reported for the translation
+  /// unit that is currently being processed.
+  size_t FirstErrorOfCurrentFile = 0;
+  /// Whether the diagnostic at the back of \c Errors still has to be counted
+  /// and filtered by \c finalizeLastError.
+  bool HasPendingError = false;
   bool LastErrorRelatesToUserCode = false;
   bool LastErrorPassesLineFilter = false;
   bool LastErrorWasIgnored = false;
