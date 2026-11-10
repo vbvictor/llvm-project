@@ -4,6 +4,7 @@ import os
 import shlex
 
 import lit.formats
+import lit.util
 
 from lit.llvm import llvm_config
 
@@ -48,6 +49,16 @@ if config.clang_tidy_staticanalyzer:
     config.available_features.add("static-analyzer")
 if config.clang_tidy_custom_check:
     config.available_features.add("custom-check")
+
+# The cross-translation-unit tests of checks run the tools of the Scalable
+# Static Analysis Framework to produce the whole-program analysis results that
+# the checks consume.
+if all(
+    lit.util.which(tool, config.environment["PATH"])
+    for tool in ("clang-ssaf-linker", "clang-ssaf-analyzer")
+):
+    config.available_features.add("ssaf")
+
 python_exec = shlex.quote(config.python_executable)
 config.substitutions.append(("%python", python_exec))
 check_clang_tidy = os.path.join(

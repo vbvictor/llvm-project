@@ -31,9 +31,8 @@ struct CallGraphSummary final : public EntitySummary {
   };
 
   static constexpr llvm::StringLiteral Name = "CallGraph";
-  SummaryName getSummaryName() const override {
-    return SummaryName(Name.str());
-  }
+  static SummaryName summaryName() { return SummaryName(Name.str()); }
+  SummaryName getSummaryName() const override { return summaryName(); }
 
   /// Represents the location of the function.
   Location Definition = {};

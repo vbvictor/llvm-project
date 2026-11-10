@@ -6,6 +6,7 @@ set(LLVM_LINK_COMPONENTS
 add_clang_library(clangScalableStaticAnalysisAnalyses
   CallGraph/CallGraphExtractor.cpp
   CallGraph/CallGraphJSONFormat.cpp
+  CallGraph/RecursionAnalysis.cpp
   EntityPointerLevel/EntityPointerLevel.cpp
   EntityPointerLevel/EntityPointerLevelFormat.cpp
   PointerFlow/PointerFlow.cpp

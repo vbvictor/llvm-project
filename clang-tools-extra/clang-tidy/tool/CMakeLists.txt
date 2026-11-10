@@ -27,6 +27,9 @@ clang_target_link_libraries(clangTidyMain
   clangAST
   clangASTMatchers
   clangBasic
+  clangScalableStaticAnalysisAnalyses
+  clangScalableStaticAnalysisCore
+  clangScalableStaticAnalysisSourceTransformation
   clangTooling
   clangToolingCore
   )

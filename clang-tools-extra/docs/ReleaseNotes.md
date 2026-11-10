@@ -260,6 +260,11 @@ infrastructure are described first, followed by tool-specific sections.
   <clang-tidy/checks/misc/multiple-inheritance>` when checking a class that
   inherits from itself or has a circular inheritance graph.
 
+- Improved {doc}`misc-no-recursion <clang-tidy/checks/misc/no-recursion>`
+  check by finding the recursion that goes through several translation units,
+  when given the result of the recursion analysis of the Scalable Static
+  Analysis Framework.
+
 - Improved {doc}`misc-redundant-expression
   <clang-tidy/checks/misc/redundant-expression>` by fixing false positives in
   nested expressions involving different macros or a mix of macro and

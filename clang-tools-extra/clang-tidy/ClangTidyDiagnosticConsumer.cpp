@@ -29,7 +29,10 @@
 #include "clang/Basic/FileManager.h"
 #include "clang/Basic/SourceManager.h"
 #include "clang/Frontend/DiagnosticRenderer.h"
+#include "clang/Frontend/SSAFOptions.h"
 #include "clang/Lex/Lexer.h"
+#include "clang/ScalableStaticAnalysis/Core/Serialization/SerializationFormatRegistry.h"
+#include "clang/ScalableStaticAnalysis/Core/WholeProgramAnalysis/WPASuite.h"
 #include "clang/Tooling/Core/Diagnostic.h"
 #include "clang/Tooling/Core/Replacement.h"
 #include "llvm/ADT/BitVector.h"
@@ -260,6 +263,51 @@ void ClangTidyContext::setCurrentFile(StringRef File) {
 void ClangTidyContext::setASTContext(ASTContext *Context) {
   DiagEngine->SetArgToStringFn(&FormatASTNodeDiagnosticArgument, Context);
   LangOpts = Context->getLangOpts();
+}
+
+void ClangTidyContext::setSSAFOptions(const ssaf::SSAFOptions &Options) {
+  LinkUnitId = Options.LinkUnitId;
+  CompilationUnitId = Options.CompilationUnitId;
+
+  const std::string &Path = Options.GlobalScopeAnalysisResult;
+  if (Path.empty()) {
+    WPASuite.reset();
+    WPASuitePath.clear();
+    return;
+  }
+  if (WPASuite && Path == WPASuitePath)
+    return;
+
+  // The result is useless without the link unit it is about, so say that
+  // before anything else.
+  WPASuite.reset();
+  if (LinkUnitId.empty()) {
+    configurationDiag("'--ssaf-global-scope-analysis-result=' requires "
+                      "'--ssaf-link-unit-id='",
+                      DiagnosticIDs::Error);
+    return;
+  }
+
+  // The extension of the file names its serialization format.
+  StringRef Format = llvm::sys::path::extension(Path);
+  if (!Format.consume_front(".") || !ssaf::isFormatRegistered(Format)) {
+    configurationDiag("the whole-program analysis result '%0' has an unknown "
+                      "serialization format",
+                      DiagnosticIDs::Error)
+        << Path;
+    return;
+  }
+  llvm::Expected<ssaf::WPASuite> Suite =
+      ssaf::makeFormat(Format)->readWPASuite(Path);
+  if (!Suite) {
+    configurationDiag("failed to read the whole-program analysis result '%0': "
+                      "%1",
+                      DiagnosticIDs::Error)
+        << Path << llvm::toString(Suite.takeError());
+    return;
+  }
+  WPASuite = std::make_shared<const ssaf::WPASuite>(std::move(*Suite));
+  WPASuitePath = Path;
 }
 
 const ClangTidyGlobalOptions &ClangTidyContext::getGlobalOptions() const {

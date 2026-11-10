@@ -59,6 +59,17 @@ foreach(dep ${LLVM_UTILS_DEPS})
   endif()
 endforeach()
 
+# The cross-translation-unit tests of checks run the tools of the Scalable
+# Static Analysis Framework. They can be disabled in the build of clang.
+set(CLANG_SSAF_TEST_DEPS
+  clang-ssaf-linker clang-ssaf-analyzer
+)
+foreach(dep ${CLANG_SSAF_TEST_DEPS})
+  if(TARGET ${dep})
+    list(APPEND CLANG_TOOLS_TEST_DEPS ${dep})
+  endif()
+endforeach()
+
 if (NOT WIN32 OR NOT LLVM_LINK_LLVM_DYLIB)
   llvm_add_library(
       CTTestTidyModule

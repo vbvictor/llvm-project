@@ -26,6 +26,11 @@ namespace clang {
 class ASTContext;
 class SourceManager;
 
+namespace ssaf {
+class SSAFOptions;
+class WPASuite;
+} // namespace ssaf
+
 namespace tidy {
 class CachedGlobList;
 
@@ -139,6 +144,33 @@ public:
   /// Sets ASTContext for the current translation unit.
   void setASTContext(ASTContext *Context);
 
+  /// Takes the options of the Scalable Static Analysis Framework (SSAF) of the
+  /// current translation unit. They are the options of clang, so they are given
+  /// to clang-tidy after `--`, or with `--extra-arg`.
+  ///
+  /// If \c Options name a result of a whole-program analysis, with
+  /// `--ssaf-global-scope-analysis-result=`, it is read, unless it has been
+  /// read already. Errors are reported as configuration errors.
+  ///
+  /// Should be called when starting to process new translation unit.
+  void setSSAFOptions(const ssaf::SSAFOptions &Options);
+
+  /// Returns the result of a whole-program analysis that was given with
+  /// `--ssaf-global-scope-analysis-result=`, or null if there is none.
+  const ssaf::WPASuite *getWPASuite() const { return WPASuite.get(); }
+
+  /// Returns the identifier of the link unit that the whole-program analysis
+  /// result is about, given with `--ssaf-link-unit-id=`.
+  StringRef getLinkUnitId() const { return LinkUnitId; }
+
+  /// Returns the identifier under which the current translation unit is known
+  /// to the whole-program analysis result: the one given with
+  /// `--ssaf-compilation-unit-id=`, or else the path of the main file.
+  StringRef getCompilationUnitId() const {
+    return CompilationUnitId.empty() ? StringRef(CurrentFile)
+                                     : StringRef(CompilationUnitId);
+  }
+
   /// Gets the language options from the AST context.
   const LangOptions &getLangOpts() const { return LangOpts; }
 
@@ -245,6 +277,12 @@ private:
   std::unique_ptr<ClangTidyOptionsProvider> OptionsProvider;
 
   std::string CurrentFile;
+
+  // The whole-program analysis result, and the path it was read from.
+  std::shared_ptr<const ssaf::WPASuite> WPASuite;
+  std::string WPASuitePath;
+  std::string LinkUnitId;
+  std::string CompilationUnitId;
   ClangTidyOptions CurrentOptions;
 
   std::unique_ptr<CachedGlobList> CheckFilter;

@@ -67,6 +67,7 @@ clang_target_link_libraries(clangTidyMiscModule
   clangBasic
   clangFormat
   clangLex
+  clangScalableStaticAnalysisCore
   clangSerialization
   clangTooling
   clangToolingInclusions
